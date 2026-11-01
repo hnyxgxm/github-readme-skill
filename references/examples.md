@@ -39,8 +39,8 @@
 - **excalidraw**（124 行，8 个 H2）：在线入口 excalidraw.com 先于本地启动，集成方列表说明生态。学托管产品先给可用入口；不学把截图全部外链托管，仓库内项目要能离线看到关键图。
 - **supabase**（288 行，5 个 H2，0 个徽章）：能力清单每项挂 Docs，社区渠道按“Best for”分工，语言切换放在底部 Translations。学 0 徽章也能立住：清单加出处就够；不学 160 行的 How it works——那是文档的活。
 - **nanoGPT**（234 行，10 个 H2）：首屏横幅直接写弃用并指向后继项目，install → quick start → reproducing → baselines 一条复现链。学状态写得显眼；不学图放在名称与定位之间。
-- **llama.cpp**（134 行，6 个 H2）：Quick start 是第 1 节，6 个徽章全是 release、nightly、CI 这类可判断的信息，另设 Supported backends。学入口最先、徽章只留功能性；不学把维护者 PR 链接和 cover 图堆进首屏。
-- **shadcn/ui**（17 行，3 个 H2）：一句、hero、Docs、Contributing、License，其余全部交出去。学路由页的下限；不学在文档站不完整时照抄 17 行。
+- **llama.cpp**（134 行，6 个 H2）：Quick start 是第 1 节，6 个徽章全是 release、nightly、CI 这类可判断的信息，另设 Supported backends。学入口最先、徽章只留功能性；不学把维护者 PR 链接和封面大图堆进首屏。
+- **shadcn/ui**（17 行，3 个 H2）：一句、首屏图、Docs、Contributing、License，其余全部交出去。学路由页的下限；不学在文档站不完整时照抄 17 行。
 - **vercel-labs/skills**（122 行，10 个 H2）：一条 `npx skills add` 加 `-g` 作用域说明，客户端差异靠 `-a` 参数和 Supported Agents 列表，其他命令进表格。学“一个方法、多个参数”；不学把补充命令都堆在安装段。
 - **transformers**（74 行，无 Markdown H2）：顶部 HTML 语言条列出 20 种语言，6–7 个徽章全为版本、CI、许可、文档在线状态、DOI，正文全部交给文档站。学语言条的完整与可维护性；不学 20 种语言的维护成本。
 - **simonw/llm**（409 行，3 个 H2）：Quick start 给安装命令和第一个请求，Project news 记录动态，Contents 做目录。学“CLI + 插件”项目的分流；不学在没有文档站时照搬 409 行。
