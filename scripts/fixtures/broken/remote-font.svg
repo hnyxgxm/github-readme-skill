@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320">
+  <title>远程字体</title><desc>引用了 Google Fonts</desc>
+  <style>@import url("https://fonts.googleapis.com/css2?family=Inter:wght@700"); text { font-family: 'Inter', sans-serif; font-size: 40px; }</style>
+  <rect width="1200" height="320" fill="#fff"/>
+  <text x="80" y="170">Remote Font</text>
+</svg>

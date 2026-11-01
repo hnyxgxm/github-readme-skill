@@ -1,1 +1,4 @@
 .DS_Store
+
+# 自测用的大文件由 scripts/check-assets.py --selftest 现生成，不进仓库
+scripts/fixtures/broken/huge.gif

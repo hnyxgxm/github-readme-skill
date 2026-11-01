@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320">
+  <title>字太小</title><desc>14 单位在 838 列里不到 10px</desc>
+  <rect width="1200" height="320" fill="#fff"/>
+  <text x="80" y="170" font-family="sans-serif" font-size="14">这一行在页面上看不清</text>
+</svg>
