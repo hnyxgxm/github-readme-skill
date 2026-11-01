@@ -1,0 +1,29 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 自测：good 必须 exit 0，broken 必须 exit 1。
+      # 脚本只依赖标准库，所以这里不需要装任何包。
+      - name: selftest
+        run: |
+          python3 scripts/check-assets.py --selftest
+          python3 scripts/check-text.py --selftest
+
+      # 本仓库自查：跑在会公开的那两份 README 上。
+      - name: self-check
+        run: |
+          python3 scripts/check-assets.py README.md README.en.md
+          python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt

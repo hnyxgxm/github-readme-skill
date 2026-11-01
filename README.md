@@ -1,5 +1,7 @@
 # README Skill
 
+[![check](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml)
+
 [English](README.en.md) · 简体中文
 
 让 AI 编程助手先判断一份 README 该承担多少内容，再把项目的真实能力组织成陌生读者能判断、能上手的首页。它管的是取舍和证据，不是辞藻。
@@ -92,6 +94,7 @@ npx skills add hnyxgxm/readme-skill -g
 - [图怎么画](references/visual-craft.md)：画布与字号换算表、只用系统字体的依据、深浅色的三种做法、动图编码参数实测。
 - [维护与回归](references/maintenance.md)：改这份 Skill 时怎么做新旧版对照，不靠改动说明自证有效。
 - `scripts/`：`check-assets.py` 判图会不会崩，`check-text.py` 判首屏、锚点、双语结构与术语，两个都带 `--selftest`。
+- `.github/workflows/check.yml`：每次推送跑两个脚本的自测，再拿这两份 README 自查一遍。徽章绿只代表机械项过了，不代表写得好。
 - [`terms.txt`](terms.txt)：术语表，喂给 `check-text.py --terms`。
 
 两个脚本只判机械项，不判写得好不好：

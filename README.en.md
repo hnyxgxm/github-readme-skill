@@ -1,5 +1,7 @@
 # README Skill
 
+[![check](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml)
+
 [简体中文](README.md) · English
 
 A skill that makes AI coding assistants decide how much a README should carry, then turn a project's real capabilities into a front page a stranger can judge and start using. It governs triage and evidence, not prose polish.
@@ -92,6 +94,7 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 - [How to draw the images](references/visual-craft.md): canvas and type-size tables, why only system fonts work, three ways to handle light/dark, and measured GIF encoding settings. (Chinese only.)
 - [Maintenance and regression](references/maintenance.md): how to compare old and new versions when editing the skill itself, instead of trusting the change note.
 - `scripts/`: `check-assets.py` flags images that will break, `check-text.py` checks first-screen length, anchors, bilingual structure and terminology drift. Both ship with `--selftest`.
+- `.github/workflows/check.yml`: on every push, runs both selftests and then points the scripts at these two READMEs. A green badge means the mechanical checks pass, nothing more.
 - [`terms.txt`](terms.txt): terminology list for `check-text.py --terms`.
 
 The scripts only decide the mechanical half, not whether the writing is any good:
