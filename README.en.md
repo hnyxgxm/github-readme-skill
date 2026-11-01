@@ -12,16 +12,17 @@ The same project's front page, before and after a rewrite driven by this skill: 
 
 | | Before | After |
 | --- | --- | --- |
-| First screen | no image, no install entry | one positioning line + three anchors + one image |
-| Links in first 20 lines | 15 | 7 (one language switch, three in-page) |
-| H2 sections | 4, all maintainer-facing | 6, install through license |
+| First screen | no image; one paragraph of adjectives, then 9 demo and validation entries | one positioning line + three anchors + one evidence image |
+| Install | only `python3 scripts/install.py`, buried at the end of "switching an existing install" | `npx skills add`, one command, in its own section at line 22 |
+| Links in first 20 lines | 15 | 6 (one language switch, three in-page anchors, two image links) |
+| H2 sections | 4: Git maintenance, switching, restoring, verification | 6: rewrite process, install, try one task, see the demo, limits, license |
 | Whole page | 85 lines / 0 images | 116 lines / 1 evidence image |
 
 The opening paragraph before the rewrite read, in translation from the Chinese original:
 
 > A design workflow for web pages, desktop software, mobile apps and web workbenches. … through content-driven direction exploration, composition and typography, material samples, continuous interaction and positive aesthetic acceptance, it helps the model produce complete and attractive interfaces …
 
-All four H2 sections addressed maintainers; nothing on the page told a reader how to install it or what to do first. The rewrite won on layering rather than on vocabulary: the judgement stays on the front page, the process detail moved back into `references/`.
+All four H2 sections were written for people who already had it installed. The install command was not missing, just buried at the end of "switching an existing install", and only as the repo-local `python3 scripts/install.py` — the generic client entry point `npx skills add` never appeared. The rewrite won on layering rather than on vocabulary: the judgement stays on the front page, the process detail moved back into `references/`.
 
 ## What it fixes
 
