@@ -88,7 +88,19 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 - [Examples](references/examples.md): per-item triage across 14 real repository front pages, plus what those samples do not justify.
 - [Acceptance method](references/acceptance.md): form gate, facts and limits, walking every branch, first-screen evidence, bilingual parity, rendering and sign-off criteria.
 - [Rendering and sizes](references/rendering.md): measured column width, type-size conversion and image-width behaviour, with a check script. (Chinese only.)
+- [How to draw the images](references/visual-craft.md): canvas and type-size tables, why only system fonts work, three ways to handle light/dark, and measured GIF encoding settings. (Chinese only.)
 - [Maintenance and regression](references/maintenance.md): how to compare old and new versions when editing the skill itself, instead of trusting the change note.
+- `scripts/`: `check-assets.py` flags images that will break, `check-text.py` checks first-screen length, anchors, bilingual structure and terminology drift. Both ship with `--selftest`.
+- [`terms.txt`](terms.txt): terminology list for `check-text.py --terms`.
+
+The scripts only decide the mechanical half, not whether the writing is any good:
+
+```sh
+python3 scripts/check-assets.py README.md
+python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
+```
+
+Exit code 0 means nothing will break; 1 means something must be fixed. Every finding is labelled as measured here, a platform limit, or an engineering threshold.
 
 ## Limits
 

@@ -88,7 +88,19 @@ npx skills add hnyxgxm/readme-skill -g
 - [范例清单](references/examples.md)：14 个真实仓库首页的逐项取舍，以及不该从这些样本推出什么。
 - [验收方法](references/acceptance.md)：形态门、事实与边界、按分支走通、首屏证据、双语对照、渲染与收口口径。
 - [渲染与尺寸](references/rendering.md)：正文列宽、字号换算与图片宽度行为的实测数据，附复核脚本。
+- [图怎么画](references/visual-craft.md)：画布与字号换算表、只用系统字体的依据、深浅色的三种做法、动图编码参数实测。
 - [维护与回归](references/maintenance.md)：改这份 Skill 时怎么做新旧版对照，不靠改动说明自证有效。
+- `scripts/`：`check-assets.py` 判图会不会崩，`check-text.py` 判首屏、锚点、双语结构与术语，两个都带 `--selftest`。
+- [`terms.txt`](terms.txt)：术语表，喂给 `check-text.py --terms`。
+
+两个脚本只判机械项，不判写得好不好：
+
+```sh
+python3 scripts/check-assets.py README.md
+python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
+```
+
+退出码 0 表示没有会崩的项，1 表示有。每条结论都标了是实测、官方限制还是工程经验。
 
 ## 使用边界
 
