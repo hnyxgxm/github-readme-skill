@@ -87,6 +87,7 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 - [Structure, layout and editing patterns](references/patterns.md): skeletons for seven project types, first-screen composition, the evidence matrix, "one install path, branching parameters", and bilingual trade-offs.
 - [Examples](references/examples.md): per-item triage across 14 real repository front pages, plus what those samples do not justify.
 - [Acceptance method](references/acceptance.md): form gate, facts and limits, walking every branch, first-screen evidence, bilingual parity, rendering and sign-off criteria.
+- [Rendering and sizes](references/rendering.md): measured column width, type-size conversion and image-width behaviour, with a check script. (Chinese only.)
 - [Maintenance and regression](references/maintenance.md): how to compare old and new versions when editing the skill itself, instead of trusting the change note.
 
 ## Limits

@@ -87,6 +87,7 @@ npx skills add hnyxgxm/readme-skill -g
 - [结构、版式与编辑示范](references/patterns.md)：七类项目的骨架、首屏编排、证据矩阵、安装的「一条路径、参数分叉」写法、双语取舍。
 - [范例清单](references/examples.md)：14 个真实仓库首页的逐项取舍，以及不该从这些样本推出什么。
 - [验收方法](references/acceptance.md)：形态门、事实与边界、按分支走通、首屏证据、双语对照、渲染与收口口径。
+- [渲染与尺寸](references/rendering.md)：正文列宽、字号换算与图片宽度行为的实测数据，附复核脚本。
 - [维护与回归](references/maintenance.md)：改这份 Skill 时怎么做新旧版对照，不靠改动说明自证有效。
 
 ## 使用边界
