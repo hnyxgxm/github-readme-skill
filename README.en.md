@@ -13,9 +13,9 @@ The same project's front page, before and after a rewrite driven by this skill: 
 | | Before | After |
 | --- | --- | --- |
 | First screen | no image, no install entry | one positioning line + three anchors + one image |
-| Links in first 20 lines | 15 | 6 (three in-page) |
+| Links in first 20 lines | 15 | 7 (one language switch, three in-page) |
 | H2 sections | 4, all maintainer-facing | 6, install through license |
-| Whole page | 86 lines / 0 images | 116 lines / 1 evidence image |
+| Whole page | 85 lines / 0 images | 116 lines / 1 evidence image |
 
 The opening paragraph before the rewrite read, in translation from the Chinese original:
 
