@@ -158,7 +158,9 @@ gifsicle -O3 --lossy=80 --colors 128 in.gif -o out.gif
 跑 [check-assets.py](../scripts/check-assets.py) 可以自动判掉其中一半（字号、字体、背景、体积、宽高），剩下的要你自己看：
 
 ```sh
-python3 scripts/check-assets.py README.md
+python3 "<技能目录>/scripts/check-assets.py" README.md
 ```
+
+`<技能目录>` 是这份 Skill 的安装位置，例如 `~/.claude/skills/readme-skill`。写成 `scripts/check-assets.py` 只在本仓库内成立，工作目录换成别人的仓库就会找不到文件。
 
 它不判好不好看。**能算的交脚本，要判断的交眼睛**，这条线不要混。

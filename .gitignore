@@ -1,4 +1,5 @@
 .DS_Store
 
-# 自测用的大文件由 scripts/check-assets.py --selftest 现生成，不进仓库
+# 自测用的 6 MB GIF 现在写在临时目录，退出时自动清掉。
+# 这条留着防手滑：老版本会把它生成在这里。
 scripts/fixtures/broken/huge.gif

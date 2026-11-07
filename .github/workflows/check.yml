@@ -27,3 +27,11 @@ jobs:
         run: |
           python3 scripts/check-assets.py README.md README.en.md
           python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
+
+      # 技能自己的文档也要过同一套机械检查。
+      # acceptance.md 要求同一个概念在 SKILL.md、references、README 和脚本输出里用同一个词；
+      # 只查 README 的话，references 里漂了词、围栏写坏了、链接写错了，CI 一个都看不见。
+      - name: docs-check
+        run: |
+          python3 scripts/check-assets.py SKILL.md references/*.md
+          python3 scripts/check-text.py SKILL.md references/*.md --terms terms.txt

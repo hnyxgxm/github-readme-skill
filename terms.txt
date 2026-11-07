@@ -1,7 +1,12 @@
-# 术语表：左列是这份 Skill 里唯一的写法，右列是禁止出现的变体。
+# 术语表：左列是这份 Skill 里唯一的写法，右列是它容易漂成的变体。
 #
-# 用法：
-#   python3 scripts/check-text.py README.md --terms terms.txt
+# 用法（脚本和词表都在技能目录里，按绝对路径调用）：
+#   SKILL=~/.claude/skills/readme-skill
+#   python3 "$SKILL/scripts/check-text.py" README.md --terms "$SKILL/terms.txt"
+#
+# 这份词表约束的是本仓库自己的写法。拿去扫用户的 README 时，
+# 命中也只报 WARN：「首屏」「路由页」是这个 Skill 的内部叫法，
+# 不是平台规定，不该要求别人的文档跟着改。
 #
 # 只放真正容易漂移的词。变体列不要写常见的近义词（如「类型」「模式」），
 # 否则会把正常中文用法判成违规。
