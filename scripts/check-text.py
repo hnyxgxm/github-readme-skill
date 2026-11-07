@@ -4,10 +4,14 @@
 只判能机械验证的部分。判断"这段写得好不好"不在脚本范围内。
 
 用法:
-    python3 scripts/check-text.py README.md
-    python3 scripts/check-text.py README.md README.en.md --pair
-    python3 scripts/check-text.py README.md --terms terms.txt
-    python3 scripts/check-text.py --selftest
+    python3 <技能目录>/scripts/check-text.py README.md
+    python3 <技能目录>/scripts/check-text.py README.md README.en.md --pair
+    python3 <技能目录>/scripts/check-text.py README.md --terms <技能目录>/terms.txt
+    python3 <技能目录>/scripts/check-text.py --selftest
+
+注意：脚本要在目标仓库里跑，但脚本自身要按绝对路径调用。
+<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/readme-skill。
+直接写 scripts/check-text.py 只在本仓库内成立，装成 Skill 后工作目录是别人的仓库，会找不到文件。
 
 退出码: 0 = 没有 FAIL, 1 = 有 FAIL, 2 = 用法或路径错误
 
@@ -23,12 +27,18 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote
 
-# [规则] SKILL.md §4：首屏控制在约 25 行以内
+# 技能安装目录，用来定位 fixtures、terms 和自测样本
+SKILL_DIR = Path(__file__).resolve().parent.parent
+
+# [规则] SKILL.md §4：首屏控制在约 25 行以内。
+# 两个用途分开：判"首屏有没有动作"用前 25 行；判"首屏是不是太长"用首个 H2 之前的行数。
 FIRST_SCREEN_LINES = 25
 
-# [规则] SKILL.md §6 / §4：徽章 2–7 个，功能性优先
+# [规则] SKILL.md §4 / §6：徽章 2–7 个，功能性优先
 BADGE_MAX = 7
+BADGE_MIN = 2
 
 # [规则] SKILL.md §8：删除内行黑话。词表按项目补充，不要指望它覆盖全部。
 DEFAULT_JARGON = [
@@ -39,14 +49,22 @@ DEFAULT_JARGON = [
 # [规则] SKILL.md §6：不加可误复制的 $ 提示符
 PROMPT_PATTERN = re.compile(r"^\s*\$ \S", re.M)
 
-# [经验] 判断首屏有没有"动作"的关键词
+# [经验] 首屏里"有动作"的硬信号：一条能跑的命令。
+# 早期版本把裸词"安装""下载"也算，结果首屏散文里写"安装后即可用"就判通过；
+# 现在只认命令名，下载走单独的链接判据。
 ACTION_PATTERN = re.compile(
-    r"\b(?:npx|npm i|npm install|pnpm|yarn|bun|brew|pip|uv|cargo|go install|"
-    r"git clone|curl|wget|docker run|mas install)\b|下载|安装|打开站点", re.I)
+    r"\b(?:npx|npm i|npm install|pnpm|yarn|bunx?|brew|pip3?|uv|cargo|go install|"
+    r"git clone|curl|wget|docker run|mas install)\b", re.I)
+
+# [经验] 首屏给下载包或 releases 链接，也算给了动作
+DOWNLOAD_PATTERN = re.compile(
+    r"\]\([^)\s]*(?:\.(?:dmg|pkg|zip|exe|apk|msi)|/releases(?:/|\)))[^)\s]*\)", re.I)
 
 # [规则] SKILL.md §4：安装排在第 4 节之后时，首屏必须给锚点跳转。
-# 有跳转就不算"首屏没有动作"。
-JUMP_PATTERN = re.compile(r"\]\(#(?:安装|使用|开始|快速开始|install|usage|get-started|getting-started|quick-?start)[^)]*\)", re.I)
+# 有跳转就不算"首屏没有动作"。锚点可能是百分号编码，匹配前先 unquote。
+JUMP_PATTERN = re.compile(
+    r"\]\(#(?:安装|使用|开始|快速开始|下载|install|usage|setup|get-?started|"
+    r"quick-?start|getting-?started)[^)]*\)", re.I)
 
 # [经验] 只在中文文档上跑黑话扫描：onboarding 这类词在英文原文里是正常用词。
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
@@ -55,6 +73,9 @@ CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 COMMAND_PATTERN = re.compile(
     r"^(?:npx|npm|pnpm|yarn|bun|brew|pip|pip3|uv|cargo|go|git|curl|wget|docker|mas|"
     r"python|python3|node|sh|bash|zsh|chmod|mkdir|export|cd|make|swift)\b")
+
+# 围栏：三个及以上反引号或波浪号。长度要配对，块内可以合法地出现更短的围栏。
+FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
 
 
 @dataclass
@@ -74,7 +95,6 @@ class Finding:
 @dataclass
 class Report:
     findings: list[Finding] = field(default_factory=list)
-    files: list[str] = field(default_factory=list)
 
     def add(self, level, file, where, detail, basis):
         self.findings.append(Finding(level, file, where, detail, basis))
@@ -90,11 +110,96 @@ class Report:
 
 # ---------------------------------------------------------------- 解析
 
+def _scan_fences(lines: list[str]) -> tuple[list[bool], bool]:
+    """标记每一行是否在围栏内，并报告结束时有没有未闭合的围栏。
+
+    按开围栏的反引号个数配对：```` 块里的 ``` 不会把它提前关掉。
+    早期版本只看行首有没有反引号，遇到 patterns.md 那种四反引号嵌套块就会错位。
+    """
+    mask: list[bool] = []
+    open_char = ""
+    open_len = 0
+    for line in lines:
+        m = FENCE_RE.match(line)
+        if not open_char:
+            if m:
+                open_char = m.group(2)[0]
+                open_len = len(m.group(2))
+                mask.append(True)
+                continue
+            mask.append(False)
+            continue
+        mask.append(True)
+        # 闭合需要：同种字符、不短于开围栏、后面没有内容
+        if m and m.group(2)[0] == open_char and len(m.group(2)) >= open_len and not m.group(3).strip():
+            open_char, open_len = "", 0
+    return mask, bool(open_char)
+
+
+def fence_mask(lines: list[str]) -> list[bool]:
+    return _scan_fences(lines)[0]
+
+
+def fence_unclosed(text: str) -> bool:
+    return _scan_fences(text.splitlines())[1]
+
+
+def strip_code(text: str) -> str:
+    """去掉围栏和行内代码，避免把示例里的符号当成正文。
+
+    行内代码必须一起剥：表格里写 `<img width="838">` 这种样例，
+    不剥会被当成真的图片引用，双语对照就会报出假的"图片数不一致"。
+    """
+    lines = text.splitlines()
+    mask = fence_mask(lines)
+    body = "\n".join("" if m else ln for ln, m in zip(lines, mask))
+    return re.sub(r"`+[^`\n]*`+", "", body)
+
+
+def strip_refs(text: str) -> str:
+    """去掉链接目标、裸 URL 和 HTML 标签，只留读者会读到的字。
+
+    docs/hero.png 里的 hero 是文件名，不是正文用词；
+    早期版本直接扫全文，合规 README 只要用了 hero.png 就会被判内行黑话。
+    """
+    text = re.sub(r"\]\(\s*[^)]*\)", "]", text)
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return text
+
+
+def headings(text: str) -> list[tuple[int, str, int]]:
+    """返回 (级别, 标题, 行号)，跳过代码围栏内的 #。"""
+    lines = text.splitlines()
+    mask = fence_mask(lines)
+    out = []
+    for i, (line, in_fence) in enumerate(zip(lines, mask), 1):
+        if in_fence:
+            continue
+        m = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if m:
+            out.append((len(m.group(1)), m.group(2).strip(), i))
+    return out
+
+
 def gh_slug(title: str) -> str:
-    """按 GitHub 生成标题锚点的规则：小写、去标点、空格转连字符。"""
+    """按 GitHub 生成标题锚点的规则：小写、去标点、空白合并成连字符。"""
     s = title.strip().lower()
     s = re.sub(r"[^\w\u4e00-\u9fff \-]", "", s)
-    return s.replace(" ", "-")
+    s = re.sub(r"\s+", "-", s)
+    return re.sub(r"-{2,}", "-", s).strip("-")
+
+
+def gh_slugs(heads: list[tuple[int, str, int]]) -> set[str]:
+    """生成全部锚点，重名标题按 GitHub 规则加 -1、-2 后缀。"""
+    seen: dict[str, int] = {}
+    out = set()
+    for _, title, _ in heads:
+        base = gh_slug(title)
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        out.add(base if n == 0 else f"{base}-{n}")
+    return out
 
 
 def count_word(text: str, word: str) -> int:
@@ -104,39 +209,24 @@ def count_word(text: str, word: str) -> int:
     return text.count(word)
 
 
-def strip_code(text: str) -> str:
-    """去掉围栏内的代码，避免把命令里的符号当成正文内容。"""
-    return re.sub(r"```.*?```", "", text, flags=re.S)
-
-
-def headings(text: str) -> list[tuple[int, str, int]]:
-    """返回 (级别, 标题, 行号)，跳过代码围栏内的 #。"""
-    out, in_fence = [], False
-    for i, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
-        if m:
-            out.append((len(m.group(1)), m.group(2).strip(), i))
-    return out
-
-
-def fences(text: str) -> int:
-    return sum(1 for line in text.splitlines() if line.lstrip().startswith("```"))
-
-
 def badges(text: str) -> list[str]:
     return re.findall(r"!\[[^\]]*\]\((https?://[^)\s]*shields\.io[^)\s]*)\)", text)
+
+
+def head_window(lines: list[str]) -> tuple[int, str]:
+    """首屏检测窗口：前 FIRST_SCREEN_LINES 行。
+
+    SKILL.md §4 规定的结构是 H1 → 一句定位 → 安装 → 命令，命令必然落在第一个 H2 之后。
+    早期版本把窗口卡在首个 H2 之前，等于要求"命令出现在它自己的 H2 之前"，永远报缺动作。
+    """
+    upto = min(len(lines), FIRST_SCREEN_LINES)
+    return upto, "\n".join(lines[:upto])
 
 
 # ---------------------------------------------------------------- 单文件检查
 
 def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, list[str]]) -> dict:
     name = path.name
-    rep.files.append(str(path))
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
 
@@ -159,20 +249,31 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
                     "[规则] SKILL.md §6：不跳级")
         prev = lvl
 
-    # 首屏行数：到第一个 H2 之前
+    # 首屏长度：到第一个 H2 之前的行数就是读者滚屏前会看到的内容量
     first_h2 = next((ln for lvl, _, ln in heads if lvl == 2), None)
-    head_len = (first_h2 - 1) if first_h2 else len(lines)
-    head_text = "\n".join(lines[:head_len])
-    if is_readme and head_len > FIRST_SCREEN_LINES:
-        rep.add("WARN", name, "首屏", f"首个 H2 之前有 {head_len} 行，超过 {FIRST_SCREEN_LINES} 行",
+    screen_len = (first_h2 - 1) if first_h2 else len(lines)
+    if is_readme and screen_len > FIRST_SCREEN_LINES:
+        rep.add("WARN", name, "首屏", f"首个 H2 之前有 {screen_len} 行，超过 {FIRST_SCREEN_LINES} 行",
                 f"[规则] SKILL.md §4：首屏约 {FIRST_SCREEN_LINES} 行内")
-    if is_readme and not ACTION_PATTERN.search(head_text) and not JUMP_PATTERN.search(head_text):
-        rep.add("WARN", name, "首屏", "没看到安装命令，也没有跳到安装的锚点",
+
+    # 首屏有没有动作：命令、下载链接、锚点跳转，或首屏内直接给了一段可复制命令
+    win_len, win_text = head_window(lines)
+    win_plain = strip_code(win_text)
+    win_mask = fence_mask(win_text.splitlines())
+    has_block = any(win_mask)
+    has_action = bool(
+        ACTION_PATTERN.search(win_text)
+        or DOWNLOAD_PATTERN.search(win_plain)
+        or has_block
+        or JUMP_PATTERN.search(unquote(win_plain))
+    )
+    if is_readme and not has_action:
+        rep.add("WARN", name, "首屏", f"前 {win_len} 行内没有安装命令、下载链接或跳到安装的锚点",
                 "[规则] SKILL.md §4：首屏要有动作或证据，或给出跳转")
 
-    # 代码围栏成对
-    if fences(text) % 2:
-        rep.add("FAIL", name, "全文", f"代码围栏 {fences(text)} 个，不成对，后半篇会被吞进代码块",
+    # 代码围栏成对：按长度配对后仍没关上才算
+    if fence_unclosed(text):
+        rep.add("FAIL", name, "全文", "代码围栏没有闭合，后半篇会被吞进代码块",
                 "[规则] Markdown 围栏必须成对")
 
     # $ 提示符
@@ -181,58 +282,54 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
         rep.add("WARN", name, "命令块", f"{n} 处行首带 `$ `，复制时会带上提示符",
                 "[规则] SKILL.md §6：不加可误复制的 $ 提示符")
 
+    # 正文（已剥围栏与行内代码），后续检查都用它
+    body = strip_code(text)
+
     # 徽章数量
-    n_badge = len(badges(strip_code(text)))
+    n_badge = len(badges(body))
     if is_readme and n_badge > BADGE_MAX:
         rep.add("WARN", name, "首屏", f"{n_badge} 个徽章，超过 {BADGE_MAX} 个",
-                f"[规则] SKILL.md §6：徽章 {2}–{BADGE_MAX} 个")
+                f"[规则] SKILL.md §4 / §6：徽章 {BADGE_MIN}–{BADGE_MAX} 个")
 
-    # 锚点有效性
-    slugs = set()
-    for _, title, _ in heads:
-        s = gh_slug(title)
-        slugs.add(s)
-    anchors = re.findall(r"\]\(#([^)]+)\)", strip_code(text))
+    # 锚点有效性：严格匹配，不解码就会把 GitHub 复制来的编码锚点判死
+    slugs = gh_slugs(heads)
+    anchors = re.findall(r"\]\(#([^)]+)\)", body)
     dead = []
     for a in anchors:
-        a_norm = a.lower()
-        if a_norm not in slugs and not any(s.startswith(a_norm) for s in slugs):
+        a_norm = unquote(a).strip().lower().replace(" ", "-")
+        if a_norm not in slugs:
             dead.append(a)
     if dead:
         rep.add("FAIL", name, "页内锚点", f"指向不存在的标题: {', '.join('#' + d for d in dead[:4])}",
-                "[实测] GitHub 锚点由标题小写、去标点、空格转连字符生成")
+                "[实测] GitHub 锚点由标题小写、去标点、空白转连字符生成，重名标题追加 -1")
 
-    # 术语
-    body = strip_code(text)
-    lower = body.lower()
-    cjk_ratio = len(CJK_PATTERN.findall(body)) / max(len(body), 1)
+    # 术语：词表是这份 Skill 的内部口径，用户文档里出现变体只提示，不算必须修
+    prose = strip_refs(body)
+    cjk_ratio = len(CJK_PATTERN.findall(prose)) / max(len(prose), 1)
     for term, variants in terms.items():
-        found = [(v, count_word(body, v)) for v in variants]
+        found = [(v, count_word(prose, v)) for v in variants]
         found = [(v, c) for v, c in found if c]
         if found:
-            top = max(found, key=lambda x: x[1])
-            rep.add("FAIL", name, "全文",
-                    f"应统一用「{term}」，但出现 {', '.join(f'「{v}」×{c}' for v, c in found if c)}",
-                    "[规则] SKILL.md §8：同一概念同一术语")
-    for word in jargon:
-        if cjk_ratio < 0.1:
-            break
-        cnt = count_word(body, word)
-        if cnt:
-            rep.add("WARN", name, "全文", f"出现「{word}」×{cnt}，多半是内行黑话",
-                    "[规则] SKILL.md §8：删除内行黑话")
+            rep.add("WARN", name, "全文",
+                    f"术语表建议统一用「{term}」，但出现 {', '.join(f'「{v}」×{c}' for v, c in found)}",
+                    "[提示] 词表来自 --terms，属于写作者自己的口径，不是平台规定")
+    if cjk_ratio >= 0.1:
+        for word in jargon:
+            cnt = count_word(prose, word)
+            if cnt:
+                rep.add("WARN", name, "全文", f"出现「{word}」×{cnt}，多半是内行黑话",
+                        "[规则] SKILL.md §8：删除内行黑话")
 
-    plain = strip_code(text)
     return {
         "name": name,
         "lines": len(lines),
         "h1": len(h1),
         "h2": [t for lvl, t, _ in heads if lvl == 2],
-        "fences": fences(text),
+        "fences": sum(1 for m in fence_mask(lines) if m),
         "badges": n_badge,
         "anchors": len(anchors),
-        "images": len(re.findall(r"!\[[^\]]*\]\(", plain)) + len(re.findall(r"<img\b", plain, re.I)),
-        "first_screen_lines": head_len,
+        "images": len(re.findall(r"!\[[^\]]*\]\(", body)) + len(re.findall(r"<img\b", body, re.I)),
+        "first_screen_lines": screen_len,
     }
 
 
@@ -241,9 +338,15 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
 def check_pair(a: Path, b: Path, ra: dict, rb: dict, rep: Report) -> None:
     label = f"{a.name} ↔ {b.name}"
 
-    if len(ra["h2"]) != len(rb["h2"]):
+    diff = len(ra["h2"]) - len(rb["h2"])
+    if abs(diff) >= 2:
         rep.add("FAIL", label, "章节", f"H2 数 {len(ra['h2'])} vs {len(rb['h2'])}，两版章节不对应",
                 "[规则] SKILL.md §7：两版章节语义对应")
+    elif diff:
+        rep.add("WARN", label, "章节",
+                f"H2 数 {len(ra['h2'])} vs {len(rb['h2'])}，差 {abs(diff)} 节；"
+                f"多一节可能是 License 这类正常差异，人工确认语义对应即可",
+                "[规则] SKILL.md §7：两版章节语义对应，不强求数量相等")
     if ra["fences"] != rb["fences"]:
         rep.add("WARN", label, "代码块", f"围栏数 {ra['fences']} vs {rb['fences']}",
                 "[规则] SKILL.md §7：同步示例与安装分支")
@@ -279,9 +382,9 @@ def check_pair(a: Path, b: Path, ra: dict, rb: dict, rep: Report) -> None:
     if only_a or only_b:
         detail = []
         if only_a:
-            detail.append(f"仅 {a.name}: {list(only_a)[0][:50]}")
+            detail.append(f"仅 {a.name}: {sorted(only_a)[0][:50]}")
         if only_b:
-            detail.append(f"仅 {b.name}: {list(only_b)[0][:50]}")
+            detail.append(f"仅 {b.name}: {sorted(only_b)[0][:50]}")
         rep.add("WARN", label, "命令", "两版命令不一致，" + "；".join(detail),
                 "[规则] SKILL.md §7：原样保留命令、参数、包名")
 
@@ -302,49 +405,87 @@ def load_terms(path: Path) -> dict[str, list[str]]:
 
 # ---------------------------------------------------------------- 自测
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FIXTURES = SKILL_DIR / "scripts" / "fixtures"
 
 
 def selftest() -> int:
+    # 样本缺失必须报错。早期版本把每条用例套在 if exists 里，
+    # 打包器丢掉 fixtures 后整个自测会静默通过，CI 上显示绿勾。
+    missing = [str(p.relative_to(FIXTURES)) for p in (
+        FIXTURES / "text" / "good.md",
+        FIXTURES / "text" / "broken.md",
+        FIXTURES / "text" / "pair-zh.md",
+        FIXTURES / "text" / "pair-en.md",
+    ) if not p.exists()]
+    if missing:
+        print(f"✗ 缺少自测样本，无法确认脚本行为: {', '.join(missing)}", file=sys.stderr)
+        print(f"  样本应在 {FIXTURES}，检查打包时是否把它漏掉了。", file=sys.stderr)
+        return 1
+
     ok = True
 
     # 1. 合格的 README 不应有 FAIL
-    good = FIXTURES / "text" / "good.md"
-    if good.exists():
-        rep = Report()
-        check_single(good, rep, DEFAULT_JARGON, {})
-        got = 1 if rep.fails else 0
-        print(f"{'✓' if got == 0 else '✗'} good     期望退出码 0，实际 {got}")
-        if got:
-            ok = False
-            for f in rep.fails:
-                print("   ", f.render())
+    rep = Report()
+    check_single(FIXTURES / "text" / "good.md", rep, DEFAULT_JARGON, {})
+    got = 1 if rep.fails else 0
+    print(f"{'✓' if got == 0 else '✗'} good     期望退出码 0，实际 {got}")
+    if got:
+        ok = False
+        for f in rep.fails:
+            print("   ", f.render())
 
     # 2. 坏样本必须命中全部规则
-    bad = FIXTURES / "text" / "broken.md"
-    if bad.exists():
-        rep = Report()
-        check_single(bad, rep, DEFAULT_JARGON, {"首屏": ["hero", "主视觉"]})
-        got = 1 if rep.fails else 0
-        print(f"{'✓' if got == 1 else '✗'} broken   期望退出码 1，实际 {got}")
-        if got != 1:
-            ok = False
-        else:
-            print(f"   命中 {len(rep.fails)} 个 FAIL / {len(rep.warns)} 个 WARN")
-            for f in rep.fails:
-                print("   ✗", f.where, f.detail[:50])
+    rep = Report()
+    check_single(FIXTURES / "text" / "broken.md", rep, DEFAULT_JARGON, {"首屏": ["hero", "主视觉"]})
+    got = 1 if rep.fails else 0
+    print(f"{'✓' if got == 1 else '✗'} broken   期望退出码 1，实际 {got}")
+    if got != 1:
+        ok = False
+    else:
+        print(f"   命中 {len(rep.fails)} 个 FAIL / {len(rep.warns)} 个 WARN")
+        for f in rep.fails:
+            print("   ✗", f.where, f.detail[:50])
 
     # 3. 双语对照
     zh, en = FIXTURES / "text" / "pair-zh.md", FIXTURES / "text" / "pair-en.md"
-    if zh.exists() and en.exists():
-        rep = Report()
-        ra = check_single(zh, rep, [], {})
-        rb = check_single(en, rep, [], {})
-        check_pair(zh, en, ra, rb, rep)
-        got = 1 if rep.fails else 0
-        print(f"{'✓' if got == 1 else '✗'} pair     期望退出码 1（故意漏互链），实际 {got}")
-        if got != 1:
-            ok = False
+    rep = Report()
+    ra = check_single(zh, rep, [], {})
+    rb = check_single(en, rep, [], {})
+    check_pair(zh, en, ra, rb, rep)
+    got = 1 if rep.fails else 0
+    print(f"{'✓' if got == 1 else '✗'} pair     期望退出码 1（故意漏互链），实际 {got}")
+    if got != 1:
+        ok = False
+
+    # 4. 解析器本身的回归：四反引号块里的内容不能被当成正文
+    probe = (
+        "# 标题\n\n"
+        "````markdown\n"
+        "## 示例里的标题\n\n"
+        "![坏图](nope/ghost.png)\n"
+        "```sh\nnpm i\n```\n"
+        "````\n\n"
+        "## 真章节\n\n正文。\n"
+    )
+    heads = headings(probe)
+    n_h2 = len([h for h in heads if h[0] == 2])
+    fences_ok = not fence_unclosed(probe)
+    print(f"{'✓' if n_h2 == 1 and fences_ok else '✗'} fence    四反引号块里的标题应被忽略"
+          f"（H2={n_h2}，围栏闭合={fences_ok}）")
+    if not (n_h2 == 1 and fences_ok):
+        ok = False
+
+    # 5. 锚点：编码形式要认，前缀不算命中
+    rep = Report()
+    probe_md = FIXTURES / "text" / "anchors.md"
+    check_single(probe_md, rep, [], {})
+    dead = [f for f in rep.fails if "锚点" in f.where]
+    expect_dead = ["#install", "#ghost"]
+    got_dead = sum(1 for d in expect_dead if any(d in f.detail for f in dead))
+    print(f"{'✓' if got_dead == len(expect_dead) else '✗'} anchor   前缀不算命中、编码锚点要认"
+          f"（死锚点命中 {got_dead}/{len(expect_dead)}）")
+    if got_dead != len(expect_dead):
+        ok = False
 
     print()
     print("自测通过" if ok else "自测失败")
@@ -369,6 +510,7 @@ def main(argv: list[str]) -> int:
         tp = Path(argv[idx + 1])
         if not tp.exists():
             print(f"找不到术语表: {tp}", file=sys.stderr)
+            print(f"这份词表在技能目录里，不在目标仓库：{SKILL_DIR / 'terms.txt'}", file=sys.stderr)
             return 2
         terms = load_terms(tp)
         args = [a for a in args if a != argv[idx + 1]]
@@ -390,8 +532,14 @@ def main(argv: list[str]) -> int:
     for p in paths:
         info[p.name] = check_single(p, rep, DEFAULT_JARGON, terms)
 
-    if "--pair" in flags and len(paths) == 2:
-        check_pair(paths[0], paths[1], info[paths[0].name], info[paths[1].name], rep)
+    if "--pair" in flags:
+        if len(paths) == 2:
+            check_pair(paths[0], paths[1], info[paths[0].name], info[paths[1].name], rep)
+        else:
+            rep.add("WARN", "—", "双语对照",
+                    f"--pair 需要恰好 2 个文件，本次给了 {len(paths)} 个，对照已跳过；"
+                    f"多语言版本请两两成对跑",
+                    "[用法] 一次只对比一对")
 
     if "--json" in flags:
         print(json.dumps({
