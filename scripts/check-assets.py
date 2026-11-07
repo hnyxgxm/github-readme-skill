@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""检查 README 引用的图在 GitHub 上会不会坏。
+"""检查 README 引用的图和文件会不会在 GitHub 上坏掉。
 
 只判"会不会崩"，不判"好不好看"。审美归审稿人，会崩的归脚本。
 
 用法:
-    python3 scripts/check-assets.py README.md
-    python3 scripts/check-assets.py README.md README.en.md
-    python3 scripts/check-assets.py --selftest
-    python3 scripts/check-assets.py README.md --json
+    python3 <技能目录>/scripts/check-assets.py README.md
+    python3 <技能目录>/scripts/check-assets.py README.md README.en.md
+    python3 <技能目录>/scripts/check-assets.py README.md --column-width 760
+    python3 <技能目录>/scripts/check-assets.py README.md --check-remote
+    python3 <技能目录>/scripts/check-assets.py --selftest
+    python3 <技能目录>/scripts/check-assets.py README.md --json
+
+注意：脚本要在目标仓库里跑，但脚本自身要按绝对路径调用。
+<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/readme-skill。
+直接写 scripts/check-assets.py 只在本仓库内成立，装成 Skill 后工作目录是别人的仓库，会找不到文件。
 
 退出码: 0 = 没有 FAIL, 1 = 有 FAIL, 2 = 用法或路径错误
 
@@ -20,18 +26,26 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import struct
 import sys
-import unicodedata
+import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+# 技能安装目录，用来定位自测样本
+SKILL_DIR = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------- 判据常量
 
 # [实测] references/rendering.md：桌面 1280/1440/1920 三档正文列均为 838px，
 # 窄屏 390 视口为 324px。验收取 838。
+# 换平台或换主题时要重量，用 --column-width 覆盖，不要改这里。
 COLUMN_WIDTH = 838
 
 # [实测] 表格单元格左右内边距合计约 27px，声明 width=410 的图实际渲染 392.3px。
@@ -79,14 +93,11 @@ SYSTEM_FONT_HINTS = {
     "sf mono", "sf pro text", "sf pro display", "georgia", "times new roman",
     "verdana", "tahoma", "trebuchet ms", "emoji", "cursive", "fantasy",
 }
-# 注意 "inter" / "roboto" 这类 Web Font 不在此列：它们不是任何系统的默认字体，
+# 注意 "inter" 这类 Web Font 不在此列：它们不是任何系统的默认字体，
 # 用户没装就 fallback，按系统字体栈处理会漏掉排版错位。
 
-# [经验] 中文圈常见的内行黑话，对应 SKILL.md §8「删除内行黑话」。
-JARGON_WORDS = [
-    "hero", "above the fold", "cta", "onboarding", "kpi", "roi", "mvp",
-    "pain point", "北向", "闭环", "抓手", "赋能", "对齐颗粒度", "心智",
-]
+# 围栏：三个及以上反引号或波浪号，长度要配对
+FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
 
 
 # ---------------------------------------------------------------- 数据结构
@@ -107,7 +118,7 @@ class Finding:
 @dataclass
 class Asset:
     raw: str
-    path: str | None          # 本地路径，外链为 None
+    path: Path | None         # 本地路径，外链为 None
     decl_width: int | None
     alt: str
     in_table: bool
@@ -116,6 +127,7 @@ class Asset:
     intrinsic: tuple[int, int] | None = None
     size_bytes: int = 0
     exists: bool = False
+    case_hint: str = ""       # 大小写不符时记下真实文件名
 
 
 @dataclass
@@ -239,9 +251,11 @@ def svg_info(text: str) -> dict:
         vw, vh = info["viewbox"]
         for rect in re.finditer(r"<rect\b[^>]*>", text, re.I):
             r = rect.group(0)
+
             def num(name, default=0.0):
                 mm = re.search(rf"\b{name}\s*=\s*['\"]\s*([\d.]+)", r, re.I)
                 return float(mm.group(1)) if mm else default
+
             if num("width") >= vw * 0.98 and num("height") >= vh * 0.98:
                 if not re.search(r"fill\s*=\s*['\"]\s*(?:none|transparent)", r, re.I):
                     info["has_bg_rect"] = True
@@ -250,20 +264,49 @@ def svg_info(text: str) -> dict:
 
 # ---------------------------------------------------------------- 引用提取
 
-IMG_MD = re.compile(r"!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'][^\"']*[\"'])?\s*\)")
+# Markdown 图片：![alt](src) 或 ![alt](src =838x300)
+IMG_MD = re.compile(
+    r"!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?"
+    r"(?:\s+=\s*(\d+)(?:x(\d+))?|\s+[\"'][^\"']*[\"'])?\s*\)")
+# Markdown 链接：排除图片，用来查普通文件在不在
+LINK_MD = re.compile(
+    r"(?<!!)\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'][^\"']*[\"'])?\s*\)")
 IMG_HTML = re.compile(r"<img\b[^>]*>", re.I)
+SOURCE_HTML = re.compile(r"<source\b[^>]*>", re.I)
 SRC_ATTR = re.compile(r"\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.I)
+SRCSET_ATTR = re.compile(r"\bsrcset\s*=\s*[\"']([^\"']+)[\"']", re.I)
 WIDTH_ATTR = re.compile(r"\bwidth\s*=\s*[\"']?(\d+)", re.I)
+# style="width:838px" 与 width="838px" 同样会被浏览器照做，只认 width= 会漏
+STYLE_WIDTH = re.compile(r"style\s*=\s*[\"'][^\"']*?\bwidth\s*:\s*(\d+)", re.I)
 ALT_ATTR = re.compile(r"\balt\s*=\s*[\"']([^\"']*)[\"']", re.I)
 
 
 def is_local(raw: str) -> bool:
-    if raw.startswith(("http://", "https://", "//", "data:", "mailto:", "#")):
+    if raw.startswith(("http://", "https://", "//", "data:", "mailto:", "#", "tel:")):
         return False
     # 通配符和尖括号是文档里写的占位路径，不是真引用
     if any(ch in raw for ch in "*?{}<>"):
         return False
     return True
+
+
+def _scan_fences(lines: list[str]) -> list[bool]:
+    """标记每行是否在围栏内，围栏按反引号长度配对。"""
+    mask: list[bool] = []
+    open_char, open_len = "", 0
+    for line in lines:
+        m = FENCE_RE.match(line)
+        if not open_char:
+            if m:
+                open_char, open_len = m.group(2)[0], len(m.group(2))
+                mask.append(True)
+                continue
+            mask.append(False)
+            continue
+        mask.append(True)
+        if m and m.group(2)[0] == open_char and len(m.group(2)) >= open_len and not m.group(3).strip():
+            open_char, open_len = "", 0
+    return mask
 
 
 def blank_fences(text: str) -> str:
@@ -272,14 +315,45 @@ def blank_fences(text: str) -> str:
     示例代码块里的图片引用是给人看的样板，不是真的引用，
     不剥掉会把文档自己的示例判成断链。
     """
-    out, in_fence = [], False
-    for line in text.splitlines(keepends=True):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append("\n" if line.endswith("\n") else "")
+    lines = text.splitlines(keepends=True)
+    mask = _scan_fences([ln.rstrip("\n") for ln in lines])
+    return "".join(
+        ("\n" if ln.endswith("\n") else "") if m else ln
+        for ln, m in zip(lines, mask)
+    )
+
+
+def exact_child(cur: Path, seg: str) -> tuple[Path | None, str]:
+    """在当前目录里按精确名字找子项，顺带查大小写。
+
+    GitHub 区分大小写，本地 macOS 不区分：README 写 Images/Hero.png 而实际文件叫
+    images/hero.png 时，本地 exists() 为真，线上 404。
+    """
+    try:
+        names = os.listdir(cur)
+    except OSError:
+        return None, "目录读不到"
+    if seg in names:
+        return cur / seg, ""
+    near = [n for n in names if n.lower() == seg.lower()]
+    if near:
+        return None, f"大小写不符，实际是 {near[0]}"
+    return None, "不存在"
+
+
+def resolve_local(root: Path, raw: str) -> tuple[Path | None, str]:
+    rel = unquote(urlparse(raw).path)
+    if rel.startswith("/"):
+        return None, "以 / 开头，按仓库根解析，脚本不猜仓库根"
+    cur = root
+    for seg in [p for p in rel.split("/") if p and p != "."]:
+        if seg == "..":
+            cur = cur.parent
             continue
-        out.append(("\n" if line.endswith("\n") else "") if in_fence else line)
-    return "".join(out)
+        cur, problem = exact_child(cur, seg)
+        if problem:
+            return None, problem
+    return cur, ""
 
 
 def collect_assets(md_path: Path) -> list[Asset]:
@@ -294,25 +368,29 @@ def collect_assets(md_path: Path) -> list[Asset]:
     def build(raw, alt, width, line_no, in_table):
         a = Asset(raw=raw, path=None, decl_width=width, alt=alt or "", in_table=in_table, line=line_no)
         if is_local(raw):
-            p = unquote(urlparse(raw).path)
-            a.path = (root / p.lstrip("/")).resolve() if not p.startswith("/") else Path(p).resolve()
-            a.kind = Path(p).suffix.lower().lstrip(".")
-            if a.path.exists() and a.path.is_file():
+            a.kind = Path(unquote(urlparse(raw).path)).suffix.lower().lstrip(".")
+            p, problem = resolve_local(root, raw)
+            if p is not None and p.is_file():
+                a.path = p
                 a.exists = True
-                a.size_bytes = a.path.stat().st_size
+                a.size_bytes = p.stat().st_size
                 if a.kind == "svg":
-                    info = svg_info(a.path.read_text(encoding="utf-8", errors="replace"))
+                    info = svg_info(p.read_text(encoding="utf-8", errors="replace"))
                     if info["viewbox"]:
                         a.intrinsic = (int(info["viewbox"][0]), int(info["viewbox"][1]))
                     elif info["attr_w"] and info["attr_h"]:
                         a.intrinsic = (int(info["attr_w"]), int(info["attr_h"]))
                 else:
-                    a.intrinsic = raster_size(a.path)
+                    a.intrinsic = raster_size(p)
+            else:
+                a.path = root / unquote(urlparse(raw).path).lstrip("/")
+                a.case_hint = problem
         return a
 
     for m in IMG_MD.finditer(text):
         line_no = text[:m.start()].count("\n") + 1
-        assets.append(build(m.group(2), m.group(1), None, line_no, line_no in table_lines))
+        w = int(m.group(3)) if m.group(3) else None
+        assets.append(build(m.group(2), m.group(1), w, line_no, line_no in table_lines))
 
     for m in IMG_HTML.finditer(text):
         line_no = text[:m.start()].count("\n") + 1
@@ -320,33 +398,81 @@ def collect_assets(md_path: Path) -> list[Asset]:
         src = SRC_ATTR.search(tag)
         if not src:
             continue
-        w = WIDTH_ATTR.search(tag)
+        w = WIDTH_ATTR.search(tag) or STYLE_WIDTH.search(tag)
         alt = ALT_ATTR.search(tag)
         assets.append(build(src.group(1), alt.group(1) if alt else "", int(w.group(1)) if w else None,
                            line_no, line_no in table_lines))
+
+    # <picture> 里的 <source srcset>：换格式时真正的加载源，坏了整张图不显示
+    for m in SOURCE_HTML.finditer(text):
+        line_no = text[:m.start()].count("\n") + 1
+        ss = SRCSET_ATTR.search(m.group(0))
+        if not ss:
+            continue
+        first = ss.group(1).split(",")[0].strip().split(" ")[0]
+        if first:
+            assets.append(build(first, "", None, line_no, line_no in table_lines))
     return assets
 
 
 # ---------------------------------------------------------------- 检查
 
-def check_file(md_path: Path, rep: Report) -> None:
+def check_links(md_path: Path, rep: Report) -> int:
+    """查普通文件链接。README 里的 CONTRIBUTING.md、docs/ 目录同样是会 404 的目标。"""
+    name = md_path.name
+    text = blank_fences(md_path.read_text(encoding="utf-8", errors="replace"))
+    n = 0
+    for m in LINK_MD.finditer(text):
+        raw = m.group(2)
+        if not is_local(raw):
+            continue
+        # 纯静态资源交给图片检查，避免同一个文件报两次
+        if re.search(r"\.(?:png|jpe?g|gif|webp|avif|svg|ico)$", raw, re.I):
+            continue
+        n += 1
+        line_no = text[:m.start()].count("\n") + 1
+        p, problem = resolve_local(md_path.parent, raw)
+        if p is None or not p.exists():
+            rep.add("FAIL", name, f"第 {line_no} 行", f"链接目标不存在: {raw}（{problem or '找不到'}）",
+                    "[官方] GitHub 区分大小写，路径写错就是 404")
+    return n
+
+
+def check_remote(a: Asset, name: str, where: str, rep: Report) -> None:
+    req = urllib.request.Request(a.raw, method="HEAD", headers={"User-Agent": "readme-skill"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            if r.status >= 400:
+                rep.add("WARN", name, where, f"外链返回 {r.status}", "[实测] 平台不会转存外链图")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as e:
+        rep.add("WARN", name, where, f"外链拿不到: {e}", "[实测] 外链挂了图就是破的")
+
+
+def check_file(md_path: Path, rep: Report, remote: bool = False) -> None:
     name = md_path.name
     rep.scanned_files.append(str(md_path))
+    n_links = check_links(md_path, rep)
     assets = collect_assets(md_path)
     rep.assets.extend(assets)
 
     if not assets:
-        rep.add("INFO", name, "全文", "没有引用任何图片", "—")
+        rep.add("INFO", name, "全文", f"没有引用任何图片（另有 {n_links} 个文件链接已查）", "—")
         return
 
     for a in assets:
         where = f"第 {a.line} 行 {a.raw.split('/')[-1][:40]}"
 
         if not is_local(a.raw):
-            rep.add("INFO", name, where, "外链图片，不做本地检查", "—")
+            if remote:
+                check_remote(a, name, where, rep)
+            else:
+                rep.add("INFO", name, where, "外链图片，未做本地检查（--check-remote 可验可达性）", "—")
             continue
         if not a.exists:
-            rep.add("FAIL", name, where, f"文件不存在: {a.path}", "GitHub 区分大小写，本地 macOS 不区分")
+            detail = f"文件不存在: {a.path}"
+            if a.case_hint:
+                detail = f"{a.raw} — {a.case_hint}"
+            rep.add("FAIL", name, where, detail, "GitHub 区分大小写，本地 macOS 不区分")
             continue
 
         # 体积
@@ -375,11 +501,11 @@ def check_file(md_path: Path, rep: Report) -> None:
             rep.add("FAIL" if over > 1.05 else "WARN", name, where,
                     f"声明 width={a.decl_width}，{tag}只有 {container}px，实际渲染 {actual}px"
                     + (f"（压掉 {(1 - actual / a.decl_width) * 100:.1f}%）" if a.decl_width else ""),
-                    f"[实测] {tag}可用宽 {container}px（rendering.md）")
+                    f"[实测] {tag}可用宽 {container}px（rendering.md，可用 --column-width 覆盖）")
 
         # 渲染宽：声明宽优先，否则取固有宽，再被容器截断
         if a.kind == "svg":
-            check_svg(md_path, name, where, a, container, tag, rep)
+            check_svg(name, where, a, container, tag, rep)
         else:
             intrinsic_w = a.intrinsic[0] if a.intrinsic else None
             if intrinsic_w is None:
@@ -398,7 +524,7 @@ def check_file(md_path: Path, rep: Report) -> None:
                         f"[实测] {tag}宽 {container}px")
 
 
-def check_svg(md_path: Path, name: str, where: str, a: Asset,
+def check_svg(name: str, where: str, a: Asset,
               container: int, tag: str, rep: Report) -> None:
     text = a.path.read_text(encoding="utf-8", errors="replace")
     info = svg_info(text)
@@ -455,34 +581,43 @@ def check_svg(md_path: Path, name: str, where: str, a: Asset,
 
 # ---------------------------------------------------------------- 自测
 
-SELFTEST_ROOT = Path(__file__).resolve().parent / "fixtures"
+SELFTEST_ROOT = SKILL_DIR / "scripts" / "fixtures"
+HARD_BYTES = 6 * 1024 * 1024
 
 
-def ensure_fixtures() -> list[str]:
-    """自测用的大文件不进仓库，跑之前现生成。
+def prepare_selftest_root() -> tempfile.TemporaryDirectory:
+    """把样本拷到临时目录再跑。
 
-    6 MB 的 GIF 只为了触发体积判据，提交进仓库是纯粹的浪费。
+    自测要造一个 6 MB 的 GIF 才能触发体积判据。早期版本直接写进技能安装目录，
+    打包分发和只读挂载都会失败；现在写临时目录，退出时自动清理。
     """
-    made = []
-    big = SELFTEST_ROOT / "broken" / "huge.gif"
+    tmp = tempfile.TemporaryDirectory(prefix="readme-skill-selftest-")
+    root = Path(tmp.name) / "fixtures"
+    if not SELFTEST_ROOT.is_dir():
+        raise FileNotFoundError(f"缺少自测样本目录: {SELFTEST_ROOT}")
+    shutil.copytree(SELFTEST_ROOT, root, ignore=shutil.ignore_patterns("huge.gif"))
+    big = root / "broken" / "huge.gif"
     if not big.exists():
         head = b"GIF89a" + struct.pack("<HH", 800, 450) + bytes([0xF0, 0x00, 0x00])
-        big.write_bytes(head + b"\x00" * (6 * 1024 * 1024) + b"\x3B")
-        made.append(big.name)
-    return made
+        big.write_bytes(head + b"\x00" * HARD_BYTES + b"\x3B")
+    return tmp
 
 
 def selftest() -> int:
-    made = ensure_fixtures()
-    if made:
-        print(f"（已生成自测用的临时样本: {', '.join(made)}）\n")
+    try:
+        tmp = prepare_selftest_root()
+    except (OSError, FileNotFoundError) as e:
+        print(f"✗ 自测准备失败: {e}", file=sys.stderr)
+        return 1
+
+    root = Path(tmp.name) / "fixtures"
     cases = [
         ("good", 0, "合格的图应当全部通过"),
         ("broken", 1, "坏样本必须被拦住"),
     ]
     ok_all = True
     for case, expect, what in cases:
-        md = SELFTEST_ROOT / case / "README.md"
+        md = root / case / "README.md"
         if not md.exists():
             print(f"✗ 缺少自测样本: {md}")
             ok_all = False
@@ -500,6 +635,30 @@ def selftest() -> int:
             print(f"   命中 {len(rep.fails)} 个 FAIL / {len(rep.warns)} 个 WARN")
             covered = {f.detail.split("：")[0][:18] for f in rep.fails}
             print(f"   覆盖规则: {', '.join(sorted(covered))}")
+
+    # 回归：只写 width= 会漏掉的三种声明方式
+    probe_dir = Path(tmp.name) / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "a.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 +
+                                      struct.pack(">II", 100, 50) + b"IHDR" + b"\x00" * 16)
+    (probe_dir / "README.md").write_text(
+        "# P\n\n"
+        "![a](a.png =1200x300)\n\n"
+        '<img src="a.png" style="width:1200px">\n\n'
+        "<picture><source srcset=\"a.png 1x\"><img src=\"a.png\"></picture>\n\n"
+        "[文档](docs/missing.md)\n",
+        encoding="utf-8")
+    rep = Report()
+    check_file(probe_dir / "README.md", rep)
+    got_w = len([f for f in rep.fails if "width=" in f.detail])
+    got_link = len([f for f in rep.fails if "链接目标不存在" in f.detail])
+    got_srcset = len(rep.assets)
+    print(f"{'✓' if got_w >= 2 and got_link == 1 and got_srcset == 4 else '✗'} "
+          f"coverage 尺寸三种写法 {got_w}/2、文件链接 {got_link}/1、引用条数 {got_srcset}/4")
+    if not (got_w >= 2 and got_link == 1 and got_srcset == 4):
+        ok_all = False
+
+    tmp.cleanup()
     print()
     print("自测通过" if ok_all else "自测失败")
     return 0 if ok_all else 1
@@ -507,28 +666,69 @@ def selftest() -> int:
 
 # ---------------------------------------------------------------- 入口
 
-def main(argv: list[str]) -> int:
-    args = [a for a in argv[1:] if not a.startswith("--")]
-    flags = {a for a in argv[1:] if a.startswith("--")}
+def take_value(argv: list[str], flag: str) -> str | None:
+    if flag not in argv:
+        return None
+    i = argv.index(flag)
+    if i + 1 >= len(argv):
+        print(f"{flag} 后面要给数值或路径", file=sys.stderr)
+        return None
+    return argv[i + 1]
 
-    if "--selftest" in flags:
+
+def main(argv: list[str]) -> int:
+    global COLUMN_WIDTH, TABLE_CELL_WIDTH
+
+    if "--selftest" in argv:
         return selftest()
+
+    skip = {"--column-width", "--table-width", "--check-remote"}
+    args, i = [], 1
+    while i < len(argv):
+        a = argv[i]
+        if a in skip:
+            if a != "--check-remote":
+                i += 2
+                continue
+            i += 1
+            continue
+        if not a.startswith("--"):
+            args.append(a)
+        i += 1
+
+    for flag, target in (("--column-width", "COLUMN_WIDTH"), ("--table-width", "TABLE_CELL_WIDTH")):
+        v = take_value(argv, flag)
+        if v is None:
+            if flag in argv:
+                return 2          # flag 在但没跟值，take_value 已经报过错
+            continue
+        try:
+            if target == "COLUMN_WIDTH":
+                COLUMN_WIDTH = int(v)
+            else:
+                TABLE_CELL_WIDTH = int(v)
+        except ValueError:
+            print(f"{flag} 要给整数像素，收到 {v!r}", file=sys.stderr)
+            return 2
 
     if not args:
         print(__doc__)
         return 2
 
+    remote = "--check-remote" in argv
     rep = Report()
     for raw in args:
         p = Path(raw)
         if not p.exists():
             print(f"找不到文件: {raw}", file=sys.stderr)
             return 2
-        check_file(p, rep)
+        check_file(p, rep, remote=remote)
 
-    if "--json" in flags:
+    if "--json" in argv:
         print(json.dumps({
             "scanned": rep.scanned_files,
+            "column_width": COLUMN_WIDTH,
+            "table_cell_width": TABLE_CELL_WIDTH,
             "assets": [
                 {"raw": a.raw, "line": a.line, "kind": a.kind, "exists": a.exists,
                  "bytes": a.size_bytes, "intrinsic": a.intrinsic,
@@ -540,7 +740,8 @@ def main(argv: list[str]) -> int:
         }, ensure_ascii=False, indent=2))
         return 1 if rep.fails else 0
 
-    print(f"扫描 {len(rep.scanned_files)} 份文件，{len(rep.assets)} 个图片引用\n")
+    print(f"扫描 {len(rep.scanned_files)} 份文件，{len(rep.assets)} 个图片引用"
+          f"（正文列 {COLUMN_WIDTH}px，表格单元格 {TABLE_CELL_WIDTH}px）\n")
     by_file: dict[str, list[Finding]] = {}
     for f in rep.findings:
         by_file.setdefault(f.file, []).append(f)
