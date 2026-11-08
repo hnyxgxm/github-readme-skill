@@ -323,6 +323,20 @@ def blank_fences(text: str) -> str:
     )
 
 
+def blank_inline_code(text: str) -> str:
+    """把行内代码换成等长空格，保留行号和列位置。
+
+    正文里写 `[CONTRIBUTING.md](CONTRIBUTING.md)` 是在讲链接怎么写，
+    不是真链接；不剥掉会被判成断链。与 check-text.py 的处理保持一致。
+    """
+    return re.sub(r"`+[^`\n]*`+", lambda m: " " * len(m.group(0)), text)
+
+
+def strip_code_spans(text: str) -> str:
+    """剥掉围栏和行内代码，保留行号。"""
+    return blank_inline_code(blank_fences(text))
+
+
 def exact_child(cur: Path, seg: str) -> tuple[Path | None, str]:
     """在当前目录里按精确名字找子项，顺带查大小写。
 
@@ -357,7 +371,7 @@ def resolve_local(root: Path, raw: str) -> tuple[Path | None, str]:
 
 
 def collect_assets(md_path: Path) -> list[Asset]:
-    text = blank_fences(md_path.read_text(encoding="utf-8", errors="replace"))
+    text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
     root = md_path.parent
     assets: list[Asset] = []
     table_lines = {
@@ -420,7 +434,7 @@ def collect_assets(md_path: Path) -> list[Asset]:
 def check_links(md_path: Path, rep: Report) -> int:
     """查普通文件链接。README 里的 CONTRIBUTING.md、docs/ 目录同样是会 404 的目标。"""
     name = md_path.name
-    text = blank_fences(md_path.read_text(encoding="utf-8", errors="replace"))
+    text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
     n = 0
     for m in LINK_MD.finditer(text):
         raw = m.group(2)
@@ -703,13 +717,17 @@ def main(argv: list[str]) -> int:
                 return 2          # flag 在但没跟值，take_value 已经报过错
             continue
         try:
-            if target == "COLUMN_WIDTH":
-                COLUMN_WIDTH = int(v)
-            else:
-                TABLE_CELL_WIDTH = int(v)
+            val = int(v)
         except ValueError:
-            print(f"{flag} 要给整数像素，收到 {v!r}", file=sys.stderr)
+            print(f"{flag} 要给正整数像素，收到 {v!r}", file=sys.stderr)
             return 2
+        if val <= 0:
+            print(f"{flag} 要给正整数像素，收到 {val}", file=sys.stderr)
+            return 2
+        if target == "COLUMN_WIDTH":
+            COLUMN_WIDTH = val
+        else:
+            TABLE_CELL_WIDTH = val
 
     if not args:
         print(__doc__)
