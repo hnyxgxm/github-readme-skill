@@ -41,6 +41,13 @@ from urllib.parse import unquote, urlparse
 # 技能安装目录，用来定位自测样本
 SKILL_DIR = Path(__file__).resolve().parent.parent
 
+# 围栏和行内代码的识别规则与 check-text.py 共用同一份，
+# 两个脚本各抄一份时，改一处忘另一处就会让同一段 Markdown 得出相反结论。
+# 关掉字节码缓存：技能可能装在只读目录，也不该往安装目录里写 __pycache__。
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from readme_md import strip_code  # noqa: E402
+
 # ---------------------------------------------------------------- 判据常量
 
 # [实测] references/rendering.md：桌面 1280/1440/1920 三档正文列均为 838px，
@@ -96,11 +103,8 @@ SYSTEM_FONT_HINTS = {
 # 注意 "inter" 这类 Web Font 不在此列：它们不是任何系统的默认字体，
 # 用户没装就 fallback，按系统字体栈处理会漏掉排版错位。
 
-# 围栏：三个及以上反引号或波浪号，长度要配对
-FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
-# 行内代码可以用更长的反引号包住含反引号的内容：`` `code` ``。
-# 与 check-text.py 保持同一套规则，否则同一段 Markdown 两个脚本结论相反。
-INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)")
+# 围栏和行内代码怎么认，见同目录 readme_md.py。两个脚本共用一份规则，
+# 各抄一份时改一处忘另一处，同一段 Markdown 会得出相反结论。
 
 
 # ---------------------------------------------------------------- 数据结构
@@ -295,53 +299,6 @@ def is_local(raw: str) -> bool:
     return True
 
 
-def _scan_fences(lines: list[str]) -> list[bool]:
-    """标记每行是否在围栏内，围栏按反引号长度配对。"""
-    mask: list[bool] = []
-    open_char, open_len = "", 0
-    for line in lines:
-        m = FENCE_RE.match(line)
-        if not open_char:
-            if m:
-                open_char, open_len = m.group(2)[0], len(m.group(2))
-                mask.append(True)
-                continue
-            mask.append(False)
-            continue
-        mask.append(True)
-        if m and m.group(2)[0] == open_char and len(m.group(2)) >= open_len and not m.group(3).strip():
-            open_char, open_len = "", 0
-    return mask
-
-
-def blank_fences(text: str) -> str:
-    """把代码围栏内的内容换成空行，保留行号。
-
-    示例代码块里的图片引用是给人看的样板，不是真的引用，
-    不剥掉会把文档自己的示例判成断链。
-    """
-    lines = text.splitlines(keepends=True)
-    mask = _scan_fences([ln.rstrip("\n") for ln in lines])
-    return "".join(
-        ("\n" if ln.endswith("\n") else "") if m else ln
-        for ln, m in zip(lines, mask)
-    )
-
-
-def blank_inline_code(text: str) -> str:
-    """把行内代码换成等长空格，保留行号和列位置。
-
-    正文里写 `[CONTRIBUTING.md](CONTRIBUTING.md)` 是在讲链接怎么写，
-    不是真链接；不剥掉会被判成断链。与 check-text.py 的处理保持一致。
-    """
-    return INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
-
-
-def strip_code_spans(text: str) -> str:
-    """剥掉围栏和行内代码，保留行号。"""
-    return blank_inline_code(blank_fences(text))
-
-
 def exact_child(cur: Path, seg: str) -> tuple[Path | None, str]:
     """在当前目录里按精确名字找子项，顺带查大小写。
 
@@ -392,7 +349,7 @@ def resolve_local(root: Path, raw: str, repo: Path | None = None) -> tuple[Path 
 
 
 def collect_assets(md_path: Path) -> list[Asset]:
-    text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
+    text = strip_code(md_path.read_text(encoding="utf-8", errors="replace"))
     root = md_path.parent
     top = repo_root(root)
     assets: list[Asset] = []
@@ -459,7 +416,7 @@ def collect_assets(md_path: Path) -> list[Asset]:
 def check_links(md_path: Path, rep: Report) -> int:
     """查普通文件链接。README 里的 CONTRIBUTING.md、docs/ 目录同样是会 404 的目标。"""
     name = md_path.name
-    text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
+    text = strip_code(md_path.read_text(encoding="utf-8", errors="replace"))
     top = repo_root(md_path.parent)
     n = 0
     # Markdown 链接和 <a href> 都要查：居中排版、按钮、导航常用 HTML 写链接

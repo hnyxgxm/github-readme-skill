@@ -3,3 +3,6 @@
 # 自测用的 6 MB GIF 现在写在临时目录，退出时自动清掉。
 # 这条留着防手滑：老版本会把它生成在这里。
 scripts/fixtures/broken/huge.gif
+
+# 脚本已关掉字节码缓存，这条防手动 py_compile 留下的残渣
+__pycache__/

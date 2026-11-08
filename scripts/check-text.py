@@ -33,6 +33,18 @@ from urllib.parse import unquote
 # 技能安装目录，用来定位 fixtures、terms 和自测样本
 SKILL_DIR = Path(__file__).resolve().parent.parent
 
+# 围栏和行内代码的识别规则与 check-assets.py 共用同一份，
+# 两个脚本各抄一份时，改一处忘另一处就会让同一段 Markdown 得出相反结论。
+# 关掉字节码缓存：技能可能装在只读目录，也不该往安装目录里写 __pycache__。
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from readme_md import (  # noqa: E402
+    code_only,
+    fence_mask,
+    fence_unclosed,
+    strip_code,
+)
+
 # [规则] SKILL.md §4：首屏控制在约 25 行以内。
 # 两个用途分开：判"首屏有没有动作"用前 25 行；判"首屏是不是太长"用首个 H2 之前的行数。
 FIRST_SCREEN_LINES = 25
@@ -91,13 +103,7 @@ ANCHOR_RE = re.compile(r"\]\(\s*#([^)\s\"']+)")
 # 手写锚点 <a name="x"> / <a id="x">，GitHub 会保留它们
 HTML_ANCHOR_RE = re.compile(r"<a\b[^>]*\b(?:name|id)\s*=\s*[\"']([^\"']+)[\"']", re.I)
 
-# 围栏：三个及以上反引号或波浪号。长度要配对，块内可以合法地出现更短的围栏。
-FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
-
-# 行内代码允许用更长的反引号包住含反引号的内容：`` `code` ``。
-# 固定写 `+[^`]*`+ 会把开头的两个反引号和中间的一个先配成一对，
-# 真正要展示的链接或图片样例就漏回正文，被误判成断链、断图、死锚点。
-INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)")
+# 围栏与行内代码怎么认，见同目录 readme_md.py。
 
 
 @dataclass
@@ -130,68 +136,7 @@ class Report:
         return [f for f in self.findings if f.level == "WARN"]
 
 
-# ---------------------------------------------------------------- 解析
-
-def _scan_fences(lines: list[str]) -> tuple[list[bool], bool]:
-    """标记每一行是否在围栏内，并报告结束时有没有未闭合的围栏。
-
-    按开围栏的反引号个数配对：```` 块里的 ``` 不会把它提前关掉。
-    早期版本只看行首有没有反引号，遇到 patterns.md 那种四反引号嵌套块就会错位。
-    """
-    mask: list[bool] = []
-    open_char = ""
-    open_len = 0
-    for line in lines:
-        m = FENCE_RE.match(line)
-        if not open_char:
-            if m:
-                open_char = m.group(2)[0]
-                open_len = len(m.group(2))
-                mask.append(True)
-                continue
-            mask.append(False)
-            continue
-        mask.append(True)
-        # 闭合需要：同种字符、不短于开围栏、后面没有内容
-        if m and m.group(2)[0] == open_char and len(m.group(2)) >= open_len and not m.group(3).strip():
-            open_char, open_len = "", 0
-    return mask, bool(open_char)
-
-
-def fence_mask(lines: list[str]) -> list[bool]:
-    return _scan_fences(lines)[0]
-
-
-def fence_unclosed(text: str) -> bool:
-    return _scan_fences(text.splitlines())[1]
-
-
-def strip_code(text: str) -> str:
-    """去掉围栏和行内代码，避免把示例里的符号当成正文。
-
-    行内代码必须一起剥：表格里写 `<img width="838">` 这种样例，
-    不剥会被当成真的图片引用，双语对照就会报出假的"图片数不一致"。
-    """
-    lines = text.splitlines()
-    mask = fence_mask(lines)
-    body = "\n".join("" if m else ln for ln, m in zip(lines, mask))
-    return INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), body)
-
-
-def code_only(text: str) -> str:
-    """只留围栏和行内代码里的内容。
-
-    首屏判"有没有动作"时，散文里写"用 npm 安装"不算动作，
-    代码块或行内代码里的 npm i 才算；反过来，代码块里的 JSON 输出、
-    diff、配置也不该算，所以由调用方逐行对照命令名。
-    """
-    lines = text.splitlines()
-    mask = fence_mask(lines)
-    fenced = [ln for ln, in_fence in zip(lines, mask) if in_fence]
-    prose_lines = [ln for ln, in_fence in zip(lines, mask) if not in_fence]
-    inline = [m.group(2) for ln in prose_lines for m in INLINE_CODE_RE.finditer(ln)]
-    return "\n".join(fenced + inline)
-
+# ---------------------------------------------------------------- 判据
 
 def has_runnable(text: str) -> bool:
     """首屏里有没有能直接复制的命令。
