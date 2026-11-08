@@ -10,7 +10,7 @@
     python3 <技能目录>/scripts/check-text.py --selftest
 
 注意：脚本要在目标仓库里跑，但脚本自身要按绝对路径调用。
-<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/readme-skill。
+<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/github-readme-skill。
 直接写 scripts/check-text.py 只在本仓库内成立，装成 Skill 后工作目录是别人的仓库，会找不到文件。
 
 退出码: 0 = 没有 FAIL, 1 = 有 FAIL, 2 = 用法或路径错误
@@ -542,7 +542,7 @@ def selftest() -> int:
         ("video",   '# T\n\n一句话。\n\n[Demo 视频](https://youtu.be/abc)\n', True),
         ("jump",    '# T\n\n一句话。\n\n[安装](#%E5%AE%89%E8%A3%85)\n\n## 安装\n\n内容。\n', False),
     ]
-    with tempfile.TemporaryDirectory(prefix="readme-skill-text-") as td:
+    with tempfile.TemporaryDirectory(prefix="github-readme-skill-text-") as td:
         probe = Path(td) / "README.md"
         wrong = []
         for label, body, want_warn in screen_cases:

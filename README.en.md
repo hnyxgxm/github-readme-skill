@@ -1,6 +1,6 @@
 # README Skill
 
-[![check](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml)
+[![check](https://github.com/hnyxgxm/github-readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/github-readme-skill/actions/workflows/check.yml)
 
 [简体中文](README.md) · English
 
@@ -54,27 +54,27 @@ Review [SKILL.md](SKILL.md) and `references/` first to see what it will tell an 
 All three clients share one `skills` CLI command and install the same complete package. It needs **Node.js 22.20+** (the current `engines` requirement of the `skills` package) and the client itself. Run this in any directory:
 
 ```sh
-npx skills add hnyxgxm/readme-skill -g
+npx skills add hnyxgxm/github-readme-skill -g
 ```
 
 Pick clients when prompted, or specify them with `-a`. `-g` installs at user level for all projects; drop `-g` inside a target project to install only there.
 
-- **Claude Code** (`-a claude-code`): `~/.claude/skills/`; type `/` in a new session and choose `readme-skill`
-- **Codex** (`-a codex`): `~/.agents/skills/`; type `$readme-skill` in a new session
-- **Qoder Desktop** (`-a qoder`): `~/.qoder/skills/`; type `/` in a new task and choose `readme-skill`
+- **Claude Code** (`-a claude-code`): `~/.claude/skills/`; type `/` in a new session and choose `github-readme-skill`
+- **Codex** (`-a codex`): `~/.agents/skills/`; type `$github-readme-skill` in a new session
+- **Qoder Desktop** (`-a qoder`): `~/.qoder/skills/`; type `/` in a new task and choose `github-readme-skill`
 
 Start a new session afterwards and confirm the skill appears in the picker. If it does not, check that the directory contains `SKILL.md` and `references/`, that the path matches the list above, then restart the client.
 
 Fallback without Node.js: copy the whole repository directory (including `references/`) into any of the skill directories above, then restart the client. Cursor, OpenCode and Gemini CLI use the same command with their own target names, listed in the [supported agents file](https://github.com/vercel-labs/skills/blob/main/docs/agents.md); the installer supporting a client does not mean this skill has been verified there.
 
-Maintenance: `npx skills update readme-skill -g` to update, `npx skills remove readme-skill -g` to uninstall; with several clients installed you are prompted to choose, or pass `-a`.
+Maintenance: `npx skills update github-readme-skill -g` to update, `npx skills remove github-readme-skill -g` to uninstall; with several clients installed you are prompted to choose, or pass `-a`.
 
 ## Try one task
 
 Select the skill in an existing project, point it at the repository or current README, then send:
 
 ```text
-Use readme-skill to review and rewrite this repository's README.
+Use github-readme-skill to review and rewrite this repository's README.
 Decide first whether it should be a router page or a manual, and propose a structure before writing.
 Treat the current code and release artifacts as the only facts; omit anything you cannot verify.
 Both languages, local edits only — do not commit or push.
@@ -107,7 +107,7 @@ python3 scripts/check-text.py README.md README.en.md --pair --terms references/t
 Once installed as a skill, the working directory is someone else's repository while the scripts and word list stay in the skill directory, so they must be called by absolute path or they will not be found:
 
 ```sh
-SKILL=~/.claude/skills/readme-skill
+SKILL=~/.claude/skills/github-readme-skill
 python3 "$SKILL/scripts/check-assets.py" README.md
 python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"
 ```

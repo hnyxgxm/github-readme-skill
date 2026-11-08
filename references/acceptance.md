@@ -70,7 +70,7 @@
 先跑两个脚本，把能算的算掉，再拿眼睛看剩下的。脚本在技能目录里，工作目录是被审的仓库，所以按绝对路径调用：
 
 ```sh
-SKILL=~/.claude/skills/readme-skill          # 换成实际安装位置
+SKILL=~/.claude/skills/github-readme-skill          # 换成实际安装位置
 python3 "$SKILL/scripts/check-assets.py" README.md README.en.md      # 图与文件链接会不会崩
 python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"   # 结构、双语、术语
 ```

@@ -12,7 +12,7 @@
     python3 <技能目录>/scripts/check-assets.py README.md --json
 
 注意：脚本要在目标仓库里跑，但脚本自身要按绝对路径调用。
-<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/readme-skill。
+<技能目录> 是这份 Skill 的安装位置，例如 ~/.claude/skills/github-readme-skill。
 直接写 scripts/check-assets.py 只在本仓库内成立，装成 Skill 后工作目录是别人的仓库，会找不到文件。
 
 退出码: 0 = 没有 FAIL, 1 = 有 FAIL, 2 = 用法或路径错误
@@ -442,7 +442,7 @@ def check_links(md_path: Path, rep: Report) -> int:
 
 
 def check_remote(a: Asset, name: str, where: str, rep: Report) -> None:
-    req = urllib.request.Request(a.raw, method="HEAD", headers={"User-Agent": "readme-skill"})
+    req = urllib.request.Request(a.raw, method="HEAD", headers={"User-Agent": "github-readme-skill"})
     try:
         with urllib.request.urlopen(req, timeout=8) as r:
             if r.status >= 400:
@@ -598,7 +598,7 @@ def prepare_selftest_root() -> tempfile.TemporaryDirectory:
     自测要造一个 6 MB 的 GIF 才能触发体积判据。早期版本直接写进技能安装目录，
     打包分发和只读挂载都会失败；现在写临时目录，退出时自动清理。
     """
-    tmp = tempfile.TemporaryDirectory(prefix="readme-skill-selftest-")
+    tmp = tempfile.TemporaryDirectory(prefix="github-readme-skill-selftest-")
     root = Path(tmp.name) / "fixtures"
     if not SELFTEST_ROOT.is_dir():
         raise FileNotFoundError(f"缺少自测样本目录: {SELFTEST_ROOT}")

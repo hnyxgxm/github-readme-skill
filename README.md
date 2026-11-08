@@ -1,6 +1,6 @@
 # README Skill
 
-[![check](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/readme-skill/actions/workflows/check.yml)
+[![check](https://github.com/hnyxgxm/github-readme-skill/actions/workflows/check.yml/badge.svg)](https://github.com/hnyxgxm/github-readme-skill/actions/workflows/check.yml)
 
 [English](README.en.md) · 简体中文
 
@@ -54,27 +54,27 @@
 三个客户端共用一条 `skills` CLI 命令，装的是同一个完整技能包；需要 **Node.js 22.20+**（`skills` 包当前的 `engines` 要求）和已安装的客户端。在终端任意目录运行：
 
 ```sh
-npx skills add hnyxgxm/readme-skill -g
+npx skills add hnyxgxm/github-readme-skill -g
 ```
 
 按提示选择客户端，或用 `-a` 指定。`-g` 是用户级安装，所有项目可用；在目标项目目录去掉 `-g` 则只装到该项目。
 
-- **Claude Code**（`-a claude-code`）：`~/.claude/skills/`；新会话输入 `/` 选择 `readme-skill`
-- **Codex**（`-a codex`）：`~/.agents/skills/`；新会话输入 `$readme-skill`
-- **Qoder Desktop**（`-a qoder`）：`~/.qoder/skills/`；新任务输入 `/` 选择 `readme-skill`
+- **Claude Code**（`-a claude-code`）：`~/.claude/skills/`；新会话输入 `/` 选择 `github-readme-skill`
+- **Codex**（`-a codex`）：`~/.agents/skills/`；新会话输入 `$github-readme-skill`
+- **Qoder Desktop**（`-a qoder`）：`~/.qoder/skills/`；新任务输入 `/` 选择 `github-readme-skill`
 
 装好后开启新会话，确认技能出现在可选列表里。没有出现时，检查目录里是否包含 `SKILL.md` 和 `references/`、安装路径是否与上面一致，再重启客户端。
 
 没有 Node.js 时的后备：把整个仓库目录（含 `references/`）复制到上面任一技能目录，同样需要重启客户端。Cursor、OpenCode、Gemini CLI 等其他客户端走同一条命令，目标名见[支持列表](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)；安装器支持某个客户端，不等于本技能已在该客户端验证过。
 
-维护：`npx skills update readme-skill -g` 更新，`npx skills remove readme-skill -g` 卸载；装到多个客户端时会提示选择目标，也可加 `-a`。
+维护：`npx skills update github-readme-skill -g` 更新，`npx skills remove github-readme-skill -g` 卸载；装到多个客户端时会提示选择目标，也可加 `-a`。
 
 ## 试一个任务
 
 在已有项目里选中技能，提供仓库路径或现有 README，然后输入：
 
 ```text
-请使用 readme-skill 审阅并重写这个仓库的 README。
+请使用 github-readme-skill 审阅并重写这个仓库的 README。
 先判断它该做路由页还是手册，再列出一版结构给我确认。
 事实以仓库当前代码和发布物为准，查不到的不要写。
 需要中英两版，本地修改即可，不要提交或推送。
@@ -107,7 +107,7 @@ python3 scripts/check-text.py README.md README.en.md --pair --terms references/t
 装成 Skill 之后，工作目录是别人的仓库，脚本和词表都留在技能目录里，要给绝对路径，否则必然 `No such file or directory`：
 
 ```sh
-SKILL=~/.claude/skills/readme-skill
+SKILL=~/.claude/skills/github-readme-skill
 python3 "$SKILL/scripts/check-assets.py" README.md
 python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"
 ```
