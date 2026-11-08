@@ -131,6 +131,7 @@ class Asset:
     size_bytes: int = 0
     exists: bool = False
     case_hint: str = ""       # 大小写不符时记下真实文件名
+    unverified: bool = False  # 以 / 开头又找不到仓库根，只能提示不能判定
 
 
 @dataclass
@@ -359,11 +360,27 @@ def exact_child(cur: Path, seg: str) -> tuple[Path | None, str]:
     return None, "不存在"
 
 
-def resolve_local(root: Path, raw: str) -> tuple[Path | None, str]:
+def repo_root(start: Path) -> Path | None:
+    """从 README 所在目录往上找 .git，定位仓库根。
+
+    GitHub 把以 / 开头的链接按仓库根解析，而 README 不一定在根目录。
+    找不到 .git 时返回 None，调用方只能提示、不能判死。
+    """
+    for p in [start, *start.parents]:
+        if (p / ".git").exists():
+            return p
+    return None
+
+
+def resolve_local(root: Path, raw: str, repo: Path | None = None) -> tuple[Path | None, str]:
     rel = unquote(urlparse(raw).path)
     if rel.startswith("/"):
-        return None, "以 / 开头，按仓库根解析，脚本不猜仓库根"
-    cur = root
+        if repo is None:
+            return None, "以 / 开头，找不到仓库根，无法校验"
+        cur = repo
+        rel = rel.lstrip("/")
+    else:
+        cur = root
     for seg in [p for p in rel.split("/") if p and p != "."]:
         if seg == "..":
             cur = cur.parent
@@ -377,6 +394,7 @@ def resolve_local(root: Path, raw: str) -> tuple[Path | None, str]:
 def collect_assets(md_path: Path) -> list[Asset]:
     text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
     root = md_path.parent
+    top = repo_root(root)
     assets: list[Asset] = []
     table_lines = {
         i + 1 for i, line in enumerate(text.splitlines())
@@ -387,8 +405,11 @@ def collect_assets(md_path: Path) -> list[Asset]:
         a = Asset(raw=raw, path=None, decl_width=width, alt=alt or "", in_table=in_table, line=line_no)
         if is_local(raw):
             a.kind = Path(unquote(urlparse(raw).path)).suffix.lower().lstrip(".")
-            p, problem = resolve_local(root, raw)
-            if p is not None and p.is_file():
+            p, problem = resolve_local(root, raw, top)
+            if p is None and raw.startswith("/") and top is None:
+                a.unverified = True
+                a.case_hint = problem
+            elif p is not None and p.is_file():
                 a.path = p
                 a.exists = True
                 a.size_bytes = p.stat().st_size
@@ -439,6 +460,7 @@ def check_links(md_path: Path, rep: Report) -> int:
     """查普通文件链接。README 里的 CONTRIBUTING.md、docs/ 目录同样是会 404 的目标。"""
     name = md_path.name
     text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
+    top = repo_root(md_path.parent)
     n = 0
     # Markdown 链接和 <a href> 都要查：居中排版、按钮、导航常用 HTML 写链接
     targets = [(m.group(2), m.start()) for m in LINK_MD.finditer(text)]
@@ -451,7 +473,11 @@ def check_links(md_path: Path, rep: Report) -> int:
             continue
         n += 1
         line_no = text[:pos].count("\n") + 1
-        p, problem = resolve_local(md_path.parent, raw)
+        p, problem = resolve_local(md_path.parent, raw, top)
+        if p is None and raw.startswith("/") and top is None:
+            rep.add("WARN", name, f"第 {line_no} 行", f"链接以 / 开头，找不到仓库根，未校验: {raw}",
+                    "[经验] 没有 .git 可定位仓库根，这项只能提示")
+            continue
         if p is None or not p.exists():
             rep.add("FAIL", name, f"第 {line_no} 行", f"链接目标不存在: {raw}（{problem or '找不到'}）",
                     "[官方] GitHub 区分大小写，路径写错就是 404")
@@ -489,6 +515,10 @@ def check_file(md_path: Path, rep: Report, remote: bool = False) -> None:
                 rep.add("INFO", name, where, "外链图片，未做本地检查（--check-remote 可验可达性）", "—")
             continue
         if not a.exists:
+            if a.unverified:
+                rep.add("WARN", name, where, f"{a.raw} — {a.case_hint}",
+                        "[经验] 没有 .git 可定位仓库根，这项只能提示")
+                continue
             detail = f"文件不存在: {a.path}"
             if a.case_hint:
                 detail = f"{a.raw} — {a.case_hint}"
@@ -697,6 +727,36 @@ def selftest() -> int:
     print(f"{'✓' if got_broken == want_broken else '✗'} links     双反引号样例不误报，HTML 断链要抓"
           f"（实际 {sorted(got_broken)}）")
     if got_broken != want_broken:
+        ok_all = False
+
+    # 回归：以 / 开头的链接按仓库根解析，找不到仓库根时只提示
+    probe3 = Path(tmp.name) / "probe3"
+    (probe3 / ".git").mkdir(parents=True)
+    (probe3 / "docs").mkdir()
+    (probe3 / "docs" / "guide.md").write_text("内容", encoding="utf-8")
+    (probe3 / "images").mkdir()
+    (probe3 / "images" / "hero.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 400, 200) + b"IHDR" + b"\x00" * 16)
+    (probe3 / "README.md").write_text(
+        "# P\n\n[文档](/docs/guide.md)\n\n![图](/images/hero.png)\n\n[坏的](/docs/missing.md)\n",
+        encoding="utf-8")
+    rep = Report()
+    check_file(probe3 / "README.md", rep)
+    root_broken = [f for f in rep.fails if "链接目标不存在" in f.detail]
+    print(f"{'✓' if len(root_broken) == 1 else '✗'} rootpath  / 开头按仓库根解析"
+          f"（FAIL {len(root_broken)}，期望 1）")
+    if len(root_broken) != 1:
+        ok_all = False
+
+    probe4 = Path(tmp.name) / "probe4"
+    probe4.mkdir()
+    (probe4 / "README.md").write_text(
+        "# P\n\n[文档](/docs/guide.md)\n\n![图](/images/hero.png)\n", encoding="utf-8")
+    rep = Report()
+    check_file(probe4 / "README.md", rep)
+    nofail = not rep.fails and len([f for f in rep.warns if "仓库根" in f.detail]) == 2
+    print(f"{'✓' if nofail else '✗'} rootpath  没有 .git 时降级为提示，不判死")
+    if not nofail:
         ok_all = False
 
     width_ok = all((

@@ -56,8 +56,9 @@ DOWNLOAD_PATTERN = re.compile(
 
 # [规则] SKILL.md §4 还允许「在线入口」。只认链接文字点明在线试用的外链，
 # 否则首屏放个仓库或文档链接也会算动作。
+# 不收裸 demo：`[Demo 视频](youtu.be/...)` 是片子，不是能上手试的入口。
 ONLINE_PATTERN = re.compile(
-    r"\[[^\]]*(?:在线|试用|体验|演示|demo|try it|playground|live demo|sandbox)[^\]]*\]"
+    r"\[[^\]]*(?:在线|试用|体验|playground|live demo|demo site|try it|try online|sandbox)[^\]]*\]"
     r"\(https?://[^)\s]+\)", re.I)
 
 # [规则] SKILL.md §4：安装排在第 4 节之后时，首屏必须给锚点跳转。
@@ -80,6 +81,10 @@ COMMAND_PATTERN = re.compile(
 # 徽章不只是 shields.io：GitHub Actions、badge.fury、badgen 都算
 BADGE_URL = re.compile(
     r"(?:shields\.io|badge\.fury\.io|badgen\.net|badge\.buildkite\.com|/badge\.(?:svg|png))", re.I)
+
+# Logo、图标、头像属于 §4 第 1 条的身份材料，不算"能说明关系的图"
+LOGO_HINT = re.compile(
+    r"(?:^|[/_.\-])(?:logo|logotype|wordmark|icon|favicon|avatar|brand)(?:[/_.\-]|$)", re.I)
 
 # 页内锚点：排除标题语法里的 "title"，否则 ](#install "跳到安装") 会把 title 当成锚点
 ANCHOR_RE = re.compile(r"\]\(\s*#([^)\s\"']+)")
@@ -271,10 +276,18 @@ def badges(text: str) -> list[str]:
 
 
 def has_evidence_image(text: str) -> bool:
-    """§4 允许用一张能说明关系的图代替动作。徽章只是标记，不算证据。"""
+    """§4 允许用一张能说明关系的图代替动作。
+
+    徽章只是信任标记，Logo 属于 §4 第 1 条的身份材料，
+    两者都不回答"它长什么样、能干什么"，不能顶替证据。
+    """
     md = re.findall(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)", text)
     html = re.findall(r"<img\b[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']", text, re.I)
-    return any(not BADGE_URL.search(url) for url in md + html)
+    for url in md + html:
+        if BADGE_URL.search(url) or LOGO_HINT.search(url):
+            continue
+        return True
+    return False
 
 
 def head_window(lines: list[str]) -> tuple[int, str]:
@@ -577,6 +590,8 @@ def selftest() -> int:
         ("badge",   '# T\n\n一句话。\n\n![b](https://img.shields.io/badge/x-blue)\n', True),
         ("online",  '# T\n\n一句话。\n\n[在线试一下](https://demo.example.com/app)\n', False),
         ("weblink", '# T\n\n一句话。\n\n[文档](https://example.com/docs)\n', True),
+        ("logo",    '# T\n\n一句话。\n\n![Logo](assets/logo.png)\n', True),
+        ("video",   '# T\n\n一句话。\n\n[Demo 视频](https://youtu.be/abc)\n', True),
         ("jump",    '# T\n\n一句话。\n\n[安装](#%E5%AE%89%E8%A3%85)\n\n## 安装\n\n内容。\n', False),
     ]
     with tempfile.TemporaryDirectory(prefix="readme-skill-text-") as td:
