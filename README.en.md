@@ -28,7 +28,7 @@ All four H2 sections were written for people who already had it installed. The i
 
 ## What it fixes
 
-- **Copying a docs site, or leaving readers nowhere to go**: it first asks one question — does the project link to a standalone docs site? — then picks one of three forms (router page, middle state, manual), which decides how much the README carries.
+- **Copying a docs site, or leaving readers nowhere to go**: it first asks one question — besides this README, does the reader have somewhere else to go? — then picks one of three forms (router page, middle state, manual), which decides how much the README carries. A repo with a `docs/` directory the README never links to is a middle state, not a manual.
 - **An overloaded first screen**: the top of the page gets exactly four things — identity, one positioning sentence, trust markers, one action or one piece of evidence — in roughly 25 lines.
 - **Adjectives standing in for evidence**: the primary proof follows the deliverable — a benchmark table or terminal output for a CLI, a real before/after for an Agent Skill, a minimal call for a library. No screenshots invented to fill space.
 - **Installation split into five sections**: every client shares one `npx skills` command, and differences land only in target name, directory and how it is enabled; the same client never gets two parallel channels.
