@@ -97,7 +97,7 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 - `scripts/`: `check-assets.py` flags images and file links that will break (including wrong case, `style="width:"`, `=WxH`, and the `<picture>` sources browsers actually load); `check-text.py` checks first-screen length, anchors, bilingual structure and terminology drift. Both ship with `--selftest`; column width is overridable with `--column-width`. `readme_md.py` holds the Markdown parsing both scripts share (fences, inline code) and is not an entry point.
 - `.github/workflows/check.yml`: on every push, runs both selftests and then points the scripts at these two READMEs, `SKILL.md` and `references/`. A green badge means the mechanical checks pass, nothing more.
 
-The scripts only decide the mechanical half, not whether the writing is any good. Inside this repository:
+The scripts only decide the mechanical half, not whether the writing is any good. They use nothing but the Python 3 standard library (3.8 or newer), so there is no package to install. Inside this repository:
 
 ```sh
 python3 scripts/check-assets.py README.md

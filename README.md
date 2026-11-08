@@ -97,7 +97,7 @@ npx skills add hnyxgxm/readme-skill -g
 - `scripts/`：`check-assets.py` 判图片和文件链接会不会崩（含大小写、`style="width:"`、`=宽x高`、`<picture>` 里的换格式源），`check-text.py` 判首屏、锚点、双语结构与术语；两个都带 `--selftest`，列宽可用 `--column-width` 覆盖。`readme_md.py` 是两个脚本共用的 Markdown 解析（围栏、行内代码），不是入口，不要直接跑。
 - `.github/workflows/check.yml`：每次推送跑自测，再拿两份 README、`SKILL.md` 和 `references/` 自查一遍。徽章绿只代表机械项过了，不代表写得好。
 
-两个脚本只判机械项，不判写得好不好。在本仓库内：
+两个脚本只判机械项，不判写得好不好。它们只用 python3 标准库（3.8 以上），不需要 pip 装东西。在本仓库内：
 
 ```sh
 python3 scripts/check-assets.py README.md

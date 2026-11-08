@@ -75,7 +75,7 @@ python3 "$SKILL/scripts/check-assets.py" README.md README.en.md      # 图与文
 python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"   # 结构、双语、术语
 ```
 
-直接写 `scripts/check-assets.py` 只在本仓库内成立；装成 Skill 后目标仓库里没有这个文件，会直接报 No such file。
+直接写 `scripts/check-assets.py` 只在本仓库内成立；装成 Skill 后目标仓库里没有这个文件，会直接报 No such file。两个脚本只依赖 python3 标准库（3.8 以上），不需要 pip 装东西。
 
 脚本只判机械项：图不存在、大小写不符、字号换算后过小、引用了会被 CSP 拦掉的远程字体、缺 viewBox、超出正文列宽、Markdown 与 HTML 写的文件链接指向不存在的路径、首屏行数与首屏有没有动作或证据、徽章数量、H1 数量、失效锚点、两版章节数不对、术语漂移。**脚本通过不等于可以交付**，下面这些它一项都判不了。
 
