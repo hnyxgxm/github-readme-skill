@@ -69,10 +69,22 @@ JUMP_PATTERN = re.compile(
 # [经验] 只在中文文档上跑黑话扫描：onboarding 这类词在英文原文里是正常用词。
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
-# 只把真命令拿来对照，避免把自然语言示例当成命令不一致
+# 只把真命令拿来对照，避免把自然语言示例当成命令不一致。
+# 首屏判"有没有可复制的动作"也用它，所以覆盖常见包管理器，
+# 但不含 cd / export / mkdir 这类单独出现时说明不了安装的指令。
 COMMAND_PATTERN = re.compile(
-    r"^(?:npx|npm|pnpm|yarn|bun|brew|pip|pip3|uv|cargo|go|git|curl|wget|docker|mas|"
-    r"python|python3|node|sh|bash|zsh|chmod|mkdir|export|cd|make|swift)\b")
+    r"^(?:npx|npm|pnpm|yarn|bunx?|brew|pip|pip3|uv|poetry|conda|cargo|rustup|go|gem|"
+    r"composer|dotnet|deno|winget|choco|scoop|apt|apt-get|snap|flatpak|mas|"
+    r"git clone|curl|wget|docker|podman|python|python3|node|sh|bash|zsh|make|swift)\b")
+
+# 徽章不只是 shields.io：GitHub Actions、badge.fury、badgen 都算
+BADGE_URL = re.compile(
+    r"(?:shields\.io|badge\.fury\.io|badgen\.net|badge\.buildkite\.com|/badge\.(?:svg|png))", re.I)
+
+# 页内锚点：排除标题语法里的 "title"，否则 ](#install "跳到安装") 会把 title 当成锚点
+ANCHOR_RE = re.compile(r"\]\(\s*#([^)\s\"']+)")
+# 手写锚点 <a name="x"> / <a id="x">，GitHub 会保留它们
+HTML_ANCHOR_RE = re.compile(r"<a\b[^>]*\b(?:name|id)\s*=\s*[\"']([^\"']+)[\"']", re.I)
 
 # 围栏：三个及以上反引号或波浪号。长度要配对，块内可以合法地出现更短的围栏。
 FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
@@ -156,6 +168,32 @@ def strip_code(text: str) -> str:
     return re.sub(r"`+[^`\n]*`+", "", body)
 
 
+def code_only(text: str) -> str:
+    """只留围栏和行内代码里的内容。
+
+    首屏判"有没有动作"时，散文里写"用 npm 安装"不算动作，
+    代码块或行内代码里的 npm i 才算；反过来，代码块里的 JSON 输出、
+    diff、配置也不该算，所以由调用方逐行对照命令名。
+    """
+    lines = text.splitlines()
+    mask = fence_mask(lines)
+    fenced = [ln for ln, in_fence in zip(lines, mask) if in_fence]
+    inline = re.findall(r"`([^`\n]+)`", text)
+    return "\n".join(fenced + inline)
+
+
+def has_runnable(text: str) -> bool:
+    """首屏里有没有能直接复制的命令。"""
+    code = code_only(text)
+    if ACTION_PATTERN.search(code):
+        return True
+    for line in code.splitlines():
+        s = line.strip().lstrip("$").strip()
+        if s and COMMAND_PATTERN.match(s):
+            return True
+    return False
+
+
 def strip_refs(text: str) -> str:
     """去掉链接目标、裸 URL 和 HTML 标签，只留读者会读到的字。
 
@@ -210,14 +248,24 @@ def count_word(text: str, word: str) -> int:
 
 
 def badges(text: str) -> list[str]:
-    return re.findall(r"!\[[^\]]*\]\((https?://[^)\s]*shields\.io[^)\s]*)\)", text)
+    """数功能性徽章。不只 shields.io：GitHub Actions、badge.fury、badgen 也算。
+
+    早期只认 shields.io，CI 徽章和包管理器徽章都数不到，
+    "超过 7 个"与双语徽章数不一致都会漏报。
+    """
+    return [
+        url
+        for _, url in re.findall(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", text)
+        if BADGE_URL.search(url)
+    ]
 
 
 def head_window(lines: list[str]) -> tuple[int, str]:
     """首屏检测窗口：前 FIRST_SCREEN_LINES 行。
 
-    SKILL.md §4 规定的结构是 H1 → 一句定位 → 安装 → 命令，命令必然落在第一个 H2 之后。
-    早期版本把窗口卡在首个 H2 之前，等于要求"命令出现在它自己的 H2 之前"，永远报缺动作。
+    SKILL.md §4 把首屏定为「约 25 行」，没有规定它必须止于第一个 H2。
+    早期版本把窗口卡在首个 H2 之前，比 §4 的行数窄，
+    安装命令落在 H2 之后时就会一直报"首屏没有动作"。
     """
     upto = min(len(lines), FIRST_SCREEN_LINES)
     return upto, "\n".join(lines[:upto])
@@ -256,15 +304,13 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
         rep.add("WARN", name, "首屏", f"首个 H2 之前有 {screen_len} 行，超过 {FIRST_SCREEN_LINES} 行",
                 f"[规则] SKILL.md §4：首屏约 {FIRST_SCREEN_LINES} 行内")
 
-    # 首屏有没有动作：命令、下载链接、锚点跳转，或首屏内直接给了一段可复制命令
+    # 首屏有没有动作：只认代码里的命令、下载链接、跳到安装的锚点。
+    # 散文里出现"安装"不算；代码块里是 JSON 输出、diff 或配置也不算。
     win_len, win_text = head_window(lines)
     win_plain = strip_code(win_text)
-    win_mask = fence_mask(win_text.splitlines())
-    has_block = any(win_mask)
     has_action = bool(
-        ACTION_PATTERN.search(win_text)
+        has_runnable(win_text)
         or DOWNLOAD_PATTERN.search(win_plain)
-        or has_block
         or JUMP_PATTERN.search(unquote(win_plain))
     )
     if is_readme and not has_action:
@@ -291,9 +337,14 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
         rep.add("WARN", name, "首屏", f"{n_badge} 个徽章，超过 {BADGE_MAX} 个",
                 f"[规则] SKILL.md §4 / §6：徽章 {BADGE_MIN}–{BADGE_MAX} 个")
 
-    # 锚点有效性：严格匹配，不解码就会把 GitHub 复制来的编码锚点判死
+    # 锚点有效性：严格匹配，不解码会把 GitHub 复制来的编码锚点判死；
+    # 手写 <a name> / <a id> 也是合法锚点，从正文里补进候选。
     slugs = gh_slugs(heads)
-    anchors = re.findall(r"\]\(#([^)]+)\)", body)
+    slugs |= {
+        unquote(m.group(1)).strip().lower().replace(" ", "-")
+        for m in HTML_ANCHOR_RE.finditer(body)
+    }
+    anchors = ANCHOR_RE.findall(body)
     dead = []
     for a in anchors:
         a_norm = unquote(a).strip().lower().replace(" ", "-")
@@ -408,15 +459,20 @@ def load_terms(path: Path) -> dict[str, list[str]]:
 FIXTURES = SKILL_DIR / "scripts" / "fixtures"
 
 
+NEEDED_FIXTURES = (
+    "text/good.md",
+    "text/broken.md",
+    "text/pair-zh.md",
+    "text/pair-en.md",
+    "text/anchors.md",
+)
+
+
 def selftest() -> int:
     # 样本缺失必须报错。早期版本把每条用例套在 if exists 里，
     # 打包器丢掉 fixtures 后整个自测会静默通过，CI 上显示绿勾。
-    missing = [str(p.relative_to(FIXTURES)) for p in (
-        FIXTURES / "text" / "good.md",
-        FIXTURES / "text" / "broken.md",
-        FIXTURES / "text" / "pair-zh.md",
-        FIXTURES / "text" / "pair-en.md",
-    ) if not p.exists()]
+    # 清单要覆盖下面每一处用到样本的地方，漏一个就是裸 traceback。
+    missing = [rel for rel in NEEDED_FIXTURES if not (FIXTURES / rel).exists()]
     if missing:
         print(f"✗ 缺少自测样本，无法确认脚本行为: {', '.join(missing)}", file=sys.stderr)
         print(f"  样本应在 {FIXTURES}，检查打包时是否把它漏掉了。", file=sys.stderr)
@@ -475,16 +531,19 @@ def selftest() -> int:
     if not (n_h2 == 1 and fences_ok):
         ok = False
 
-    # 5. 锚点：编码形式要认，前缀不算命中
+    # 5. 锚点：编码形式要认，前缀不算命中，链接标题与手写锚点不算死链
     rep = Report()
     probe_md = FIXTURES / "text" / "anchors.md"
     check_single(probe_md, rep, [], {})
-    dead = [f for f in rep.fails if "锚点" in f.where]
-    expect_dead = ["#install", "#ghost"]
-    got_dead = sum(1 for d in expect_dead if any(d in f.detail for f in dead))
-    print(f"{'✓' if got_dead == len(expect_dead) else '✗'} anchor   前缀不算命中、编码锚点要认"
-          f"（死锚点命中 {got_dead}/{len(expect_dead)}）")
-    if got_dead != len(expect_dead):
+    dead_tokens: set[str] = set()
+    for f in rep.fails:
+        if "锚点" in f.where:
+            tail = f.detail.split(": ", 1)[-1]
+            dead_tokens |= {t.strip().lstrip("#") for t in tail.split(",")}
+    want_dead = {"install", "ghost"}
+    print(f"{'✓' if dead_tokens == want_dead else '✗'} anchor   只该抓 #install 与 #ghost"
+          f"（实际抓到 {sorted(dead_tokens)}）")
+    if dead_tokens != want_dead:
         ok = False
 
     print()
