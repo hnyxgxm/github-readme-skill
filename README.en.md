@@ -8,6 +8,10 @@ A skill that makes AI coding assistants decide how much a README should carry, t
 
 [Install](#install) · [First run](#first-run) · [Before and after](#before-and-after) · [Repository layout](#repository-layout)
 
+![The same front page before and after a rewrite: on the left the first screen is a wall of text with install buried mid-document; on the right it holds only a positioning line, badges and one install command](assets/before-after.en.svg)
+
+The same project's first screen before and after a rewrite driven by this skill. On the left you cannot tell what to do next; on the right install sits directly below.
+
 ## Install
 
 This is an instruction and reference package for coding assistants, not standalone software. The README exists in Chinese and English; **the skill instructions and reference files are currently Chinese only**. To see what it will tell an assistant to do, read [SKILL.md](SKILL.md) and `references/` directly.
@@ -47,7 +51,7 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 
 ## Before and after
 
-The same project's front page before and after a rewrite driven by this skill: [before](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [after](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md) ([UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)). Both links point at fixed commits; the summary below is a précis, and opening the full pages is what actually counts as looking.
+Both full pages: [before 3196ad5](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [after 568b9cd](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md) ([UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)). Both point at fixed commits; the numbers below are a précis, and opening the full pages is what actually counts as looking.
 
 | | Before | After |
 | --- | --- | --- |

@@ -8,6 +8,10 @@
 
 [安装](#安装) · [第一次使用](#第一次使用) · [前后对照](#前后对照) · [仓库结构](#仓库结构)
 
+![同一个项目首页改版前后：改前首屏堆满正文、安装埋在中段；改后首屏只有定位、徽章和一条安装命令](assets/before-after.zh.svg)
+
+同一个项目，用这份 Skill 重写前后的首屏。左边看不出下一步点哪，右边的安装就在首屏下面。
+
 ## 安装
 
 这是给编程助手读取的指令与参考资料包，不是独立软件。README 有中英两版，**技能指令与参考资料目前只有中文**。想先看清楚它会做什么，直接读 [SKILL.md](SKILL.md) 和 `references/`。
@@ -47,7 +51,7 @@ npx skills add hnyxgxm/github-readme-skill -g
 
 ## 前后对照
 
-同一个项目的首页，用这份 Skill 重写前后：[改前](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [改后](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md)（[UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)）。两个链接都指向固定提交，下面的摘要只是提要，点开看全文才算真看过。
+两版完整页面：[改前 3196ad5](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [改后 568b9cd](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md)（[UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)）。都指向固定提交，下面的数字只是提要，点开看全文才算真看过。
 
 | 对比项 | 改前 | 改后 |
 | --- | --- | --- |
