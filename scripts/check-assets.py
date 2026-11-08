@@ -98,6 +98,9 @@ SYSTEM_FONT_HINTS = {
 
 # 围栏：三个及以上反引号或波浪号，长度要配对
 FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
+# 行内代码可以用更长的反引号包住含反引号的内容：`` `code` ``。
+# 与 check-text.py 保持同一套规则，否则同一段 Markdown 两个脚本结论相反。
+INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)")
 
 
 # ---------------------------------------------------------------- 数据结构
@@ -275,6 +278,7 @@ IMG_HTML = re.compile(r"<img\b[^>]*>", re.I)
 SOURCE_HTML = re.compile(r"<source\b[^>]*>", re.I)
 SRC_ATTR = re.compile(r"\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.I)
 SRCSET_ATTR = re.compile(r"\bsrcset\s*=\s*[\"']([^\"']+)[\"']", re.I)
+HREF_HTML = re.compile(r"<a\b[^>]*\bhref\s*=\s*[\"']([^\"']+)[\"']", re.I)
 WIDTH_ATTR = re.compile(r"\bwidth\s*=\s*[\"']?(\d+)", re.I)
 # style="width:838px" 与 width="838px" 同样会被浏览器照做，只认 width= 会漏
 STYLE_WIDTH = re.compile(r"style\s*=\s*[\"'][^\"']*?\bwidth\s*:\s*(\d+)", re.I)
@@ -329,7 +333,7 @@ def blank_inline_code(text: str) -> str:
     正文里写 `[CONTRIBUTING.md](CONTRIBUTING.md)` 是在讲链接怎么写，
     不是真链接；不剥掉会被判成断链。与 check-text.py 的处理保持一致。
     """
-    return re.sub(r"`+[^`\n]*`+", lambda m: " " * len(m.group(0)), text)
+    return INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
 
 
 def strip_code_spans(text: str) -> str:
@@ -436,15 +440,17 @@ def check_links(md_path: Path, rep: Report) -> int:
     name = md_path.name
     text = strip_code_spans(md_path.read_text(encoding="utf-8", errors="replace"))
     n = 0
-    for m in LINK_MD.finditer(text):
-        raw = m.group(2)
+    # Markdown 链接和 <a href> 都要查：居中排版、按钮、导航常用 HTML 写链接
+    targets = [(m.group(2), m.start()) for m in LINK_MD.finditer(text)]
+    targets += [(m.group(1), m.start()) for m in HREF_HTML.finditer(text)]
+    for raw, pos in targets:
         if not is_local(raw):
             continue
         # 纯静态资源交给图片检查，避免同一个文件报两次
         if re.search(r"\.(?:png|jpe?g|gif|webp|avif|svg|ico)$", raw, re.I):
             continue
         n += 1
-        line_no = text[:m.start()].count("\n") + 1
+        line_no = text[:pos].count("\n") + 1
         p, problem = resolve_local(md_path.parent, raw)
         if p is None or not p.exists():
             rep.add("FAIL", name, f"第 {line_no} 行", f"链接目标不存在: {raw}（{problem or '找不到'}）",
@@ -672,6 +678,37 @@ def selftest() -> int:
     if not (got_w >= 2 and got_link == 1 and got_srcset == 4):
         ok_all = False
 
+    # 回归：双反引号里的写法样例不是真引用，HTML 写的断链同样要抓
+    probe2 = Path(tmp.name) / "probe2"
+    probe2.mkdir()
+    (probe2 / "README.md").write_text(
+        "# P\n\n"
+        "写法：`` `[x](ghost.md)` ``、`` `![y](nope.png)` ``。\n\n"
+        "真链接 [文档](docs/missing.md)。\n\n"
+        '<a href="guide/missing.md">指南</a>\n',
+        encoding="utf-8")
+    rep = Report()
+    check_file(probe2 / "README.md", rep)
+    got_broken = {
+        f.detail.split(": ", 1)[-1].split("（")[0]
+        for f in rep.fails if "链接目标不存在" in f.detail
+    }
+    want_broken = {"docs/missing.md", "guide/missing.md"}
+    print(f"{'✓' if got_broken == want_broken else '✗'} links     双反引号样例不误报，HTML 断链要抓"
+          f"（实际 {sorted(got_broken)}）")
+    if got_broken != want_broken:
+        ok_all = False
+
+    width_ok = all((
+        parse_positive_px("0") is None,
+        parse_positive_px("-1") is None,
+        parse_positive_px("abc") is None,
+        parse_positive_px("760") == 760,
+    ))
+    print(f"{'✓' if width_ok else '✗'} width     列宽只收正整数")
+    if not width_ok:
+        ok_all = False
+
     tmp.cleanup()
     print()
     print("自测通过" if ok_all else "自测失败")
@@ -679,6 +716,15 @@ def selftest() -> int:
 
 
 # ---------------------------------------------------------------- 入口
+
+def parse_positive_px(v: str) -> int | None:
+    """列宽只接受正整数；0 会在换算字号时触发除零。"""
+    try:
+        val = int(v)
+    except ValueError:
+        return None
+    return val if val > 0 else None
+
 
 def take_value(argv: list[str], flag: str) -> str | None:
     if flag not in argv:
@@ -716,13 +762,9 @@ def main(argv: list[str]) -> int:
             if flag in argv:
                 return 2          # flag 在但没跟值，take_value 已经报过错
             continue
-        try:
-            val = int(v)
-        except ValueError:
+        val = parse_positive_px(v)
+        if val is None:
             print(f"{flag} 要给正整数像素，收到 {v!r}", file=sys.stderr)
-            return 2
-        if val <= 0:
-            print(f"{flag} 要给正整数像素，收到 {val}", file=sys.stderr)
             return 2
         if target == "COLUMN_WIDTH":
             COLUMN_WIDTH = val

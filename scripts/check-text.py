@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
@@ -36,9 +37,9 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 # 两个用途分开：判"首屏有没有动作"用前 25 行；判"首屏是不是太长"用首个 H2 之前的行数。
 FIRST_SCREEN_LINES = 25
 
-# [规则] SKILL.md §4 / §6：徽章 2–7 个，功能性优先
+# [规则] SKILL.md §4：徽章 2–7 个，功能性优先。
+# 脚本只判上限；0 个也可以用出处或赞助信息替代，不按下限扣分。
 BADGE_MAX = 7
-BADGE_MIN = 2
 
 # [规则] SKILL.md §8：删除内行黑话。词表按项目补充，不要指望它覆盖全部。
 DEFAULT_JARGON = [
@@ -49,16 +50,15 @@ DEFAULT_JARGON = [
 # [规则] SKILL.md §6：不加可误复制的 $ 提示符
 PROMPT_PATTERN = re.compile(r"^\s*\$ \S", re.M)
 
-# [经验] 首屏里"有动作"的硬信号：一条能跑的命令。
-# 早期版本把裸词"安装""下载"也算，结果首屏散文里写"安装后即可用"就判通过；
-# 现在只认命令名，下载走单独的链接判据。
-ACTION_PATTERN = re.compile(
-    r"\b(?:npx|npm i|npm install|pnpm|yarn|bunx?|brew|pip3?|uv|cargo|go install|"
-    r"git clone|curl|wget|docker run|mas install)\b", re.I)
-
 # [经验] 首屏给下载包或 releases 链接，也算给了动作
 DOWNLOAD_PATTERN = re.compile(
     r"\]\([^)\s]*(?:\.(?:dmg|pkg|zip|exe|apk|msi)|/releases(?:/|\)))[^)\s]*\)", re.I)
+
+# [规则] SKILL.md §4 还允许「在线入口」。只认链接文字点明在线试用的外链，
+# 否则首屏放个仓库或文档链接也会算动作。
+ONLINE_PATTERN = re.compile(
+    r"\[[^\]]*(?:在线|试用|体验|演示|demo|try it|playground|live demo|sandbox)[^\]]*\]"
+    r"\(https?://[^)\s]+\)", re.I)
 
 # [规则] SKILL.md §4：安装排在第 4 节之后时，首屏必须给锚点跳转。
 # 有跳转就不算"首屏没有动作"。锚点可能是百分号编码，匹配前先 unquote。
@@ -73,7 +73,7 @@ CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 # 首屏判"有没有可复制的动作"也用它，所以覆盖常见包管理器，
 # 但不含 cd / export / mkdir 这类单独出现时说明不了安装的指令。
 COMMAND_PATTERN = re.compile(
-    r"^(?:npx|npm|pnpm|yarn|bunx?|brew|pip|pip3|uv|poetry|conda|cargo|rustup|go|gem|"
+    r"^(?:npx|npm|pnpm|yarn|bunx?|brew|pip|pip3|pipx|uv|uvx|poetry|conda|cargo|rustup|go|gem|"
     r"composer|dotnet|deno|winget|choco|scoop|apt|apt-get|snap|flatpak|mas|"
     r"git clone|curl|wget|docker|podman|python|python3|node|sh|bash|zsh|make|swift)\b")
 
@@ -88,6 +88,11 @@ HTML_ANCHOR_RE = re.compile(r"<a\b[^>]*\b(?:name|id)\s*=\s*[\"']([^\"']+)[\"']",
 
 # 围栏：三个及以上反引号或波浪号。长度要配对，块内可以合法地出现更短的围栏。
 FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
+
+# 行内代码允许用更长的反引号包住含反引号的内容：`` `code` ``。
+# 固定写 `+[^`]*`+ 会把开头的两个反引号和中间的一个先配成一对，
+# 真正要展示的链接或图片样例就漏回正文，被误判成断链、断图、死锚点。
+INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)")
 
 
 @dataclass
@@ -165,7 +170,7 @@ def strip_code(text: str) -> str:
     lines = text.splitlines()
     mask = fence_mask(lines)
     body = "\n".join("" if m else ln for ln, m in zip(lines, mask))
-    return re.sub(r"`+[^`\n]*`+", "", body)
+    return INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), body)
 
 
 def code_only(text: str) -> str:
@@ -178,18 +183,25 @@ def code_only(text: str) -> str:
     lines = text.splitlines()
     mask = fence_mask(lines)
     fenced = [ln for ln, in_fence in zip(lines, mask) if in_fence]
-    inline = re.findall(r"`([^`\n]+)`", text)
+    prose_lines = [ln for ln, in_fence in zip(lines, mask) if not in_fence]
+    inline = [m.group(2) for ln in prose_lines for m in INLINE_CODE_RE.finditer(ln)]
     return "\n".join(fenced + inline)
 
 
 def has_runnable(text: str) -> bool:
-    """首屏里有没有能直接复制的命令。"""
+    """首屏里有没有能直接复制的命令。
+
+    只看代码里"行首就是命令"的行。JSON 字符串、注释、日志输出里出现
+    "npm i -g x" 这种字样不算，否则任意配置块或说明块都能冒充安装命令。
+    """
     code = code_only(text)
-    if ACTION_PATTERN.search(code):
-        return True
     for line in code.splitlines():
         s = line.strip().lstrip("$").strip()
-        if s and COMMAND_PATTERN.match(s):
+        if s.startswith("sudo "):
+            s = s[5:].lstrip()
+        if not s or s[0] in "#/\"'{[<>+*-|":
+            continue
+        if COMMAND_PATTERN.match(s):
             return True
     return False
 
@@ -253,11 +265,16 @@ def badges(text: str) -> list[str]:
     早期只认 shields.io，CI 徽章和包管理器徽章都数不到，
     "超过 7 个"与双语徽章数不一致都会漏报。
     """
-    return [
-        url
-        for _, url in re.findall(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", text)
-        if BADGE_URL.search(url)
-    ]
+    md = [url for _, url in re.findall(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", text)]
+    html = re.findall(r"<img\b[^>]*\bsrc\s*=\s*[\"'](https?://[^\"']+)[\"']", text, re.I)
+    return [url for url in md + html if BADGE_URL.search(url)]
+
+
+def has_evidence_image(text: str) -> bool:
+    """§4 允许用一张能说明关系的图代替动作。徽章只是标记，不算证据。"""
+    md = re.findall(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)", text)
+    html = re.findall(r"<img\b[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']", text, re.I)
+    return any(not BADGE_URL.search(url) for url in md + html)
 
 
 def head_window(lines: list[str]) -> tuple[int, str]:
@@ -311,10 +328,13 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
     has_action = bool(
         has_runnable(win_text)
         or DOWNLOAD_PATTERN.search(win_plain)
+        or ONLINE_PATTERN.search(win_plain)
         or JUMP_PATTERN.search(unquote(win_plain))
+        or has_evidence_image(win_plain)
     )
     if is_readme and not has_action:
-        rep.add("WARN", name, "首屏", f"前 {win_len} 行内没有安装命令、下载链接或跳到安装的锚点",
+        rep.add("WARN", name, "首屏",
+                f"前 {win_len} 行内没有安装命令、下载或在线入口、说明图或跳到安装的锚点",
                 "[规则] SKILL.md §4：首屏要有动作或证据，或给出跳转")
 
     # 代码围栏成对：按长度配对后仍没关上才算
@@ -335,7 +355,7 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
     n_badge = len(badges(body))
     if is_readme and n_badge > BADGE_MAX:
         rep.add("WARN", name, "首屏", f"{n_badge} 个徽章，超过 {BADGE_MAX} 个",
-                f"[规则] SKILL.md §4 / §6：徽章 {BADGE_MIN}–{BADGE_MAX} 个")
+                f"[规则] SKILL.md §4：徽章不超过 {BADGE_MAX} 个")
 
     # 锚点有效性：严格匹配，不解码会把 GitHub 复制来的编码锚点判死；
     # 手写 <a name> / <a id> 也是合法锚点，从正文里补进候选。
@@ -545,6 +565,59 @@ def selftest() -> int:
           f"（实际抓到 {sorted(dead_tokens)}）")
     if dead_tokens != want_dead:
         ok = False
+
+    # 6. 首屏：代码里的命令字样不算动作，真命令、说明图、跳转算
+    screen_cases = [
+        ("json",    '# T\n\n一句话。\n\n```json\n{"cmd": "npm i -g x"}\n```\n', True),
+        ("comment", '# T\n\n一句话。\n\n```sh\n# 用 brew install 装依赖\n```\n', True),
+        ("cmd",     '# T\n\n一句话。\n\n```sh\nnpm i -g x\n```\n', False),
+        ("inline",  '# T\n\n一句话。\n\n装：`npm i -g x`\n', False),
+        ("sudo",    '# T\n\n一句话。\n\n```sh\nsudo apt install x\n```\n', False),
+        ("image",   '# T\n\n一句话。\n\n![关系图](shot.png)\n', False),
+        ("badge",   '# T\n\n一句话。\n\n![b](https://img.shields.io/badge/x-blue)\n', True),
+        ("online",  '# T\n\n一句话。\n\n[在线试一下](https://demo.example.com/app)\n', False),
+        ("weblink", '# T\n\n一句话。\n\n[文档](https://example.com/docs)\n', True),
+        ("jump",    '# T\n\n一句话。\n\n[安装](#%E5%AE%89%E8%A3%85)\n\n## 安装\n\n内容。\n', False),
+    ]
+    with tempfile.TemporaryDirectory(prefix="readme-skill-text-") as td:
+        probe = Path(td) / "README.md"
+        wrong = []
+        for label, body, want_warn in screen_cases:
+            probe.write_text(body, encoding="utf-8")
+            rep = Report()
+            check_single(probe, rep, [], {})
+            got_warn = any("行内没有" in f.detail for f in rep.warns)
+            if got_warn != want_warn:
+                wrong.append(label)
+        print(f"{'✓' if not wrong else '✗'} screen    首屏动作与证据判据"
+              f"（{len(screen_cases) - len(wrong)}/{len(screen_cases)}）")
+        if wrong:
+            print(f"   不符: {', '.join(wrong)}")
+            ok = False
+
+        # 7. 双反引号包住含反引号的写法样例，不能被当成真的死锚点
+        probe.write_text(
+            "# T\n\n一句话。\n\n写法：`` `[跳](#ghost)` ``、`` `![x](nope.png)` ``。\n\n"
+            "## 安装\n\n```sh\nnpm i -g x\n```\n", encoding="utf-8")
+        rep = Report()
+        check_single(probe, rep, [], {})
+        ghost = [f for f in rep.fails if "ghost" in f.detail]
+        print(f"{'✓' if not ghost else '✗'} inline    双反引号里的样例不判断锚点")
+        if ghost:
+            ok = False
+
+        # 8. HTML 写法的徽章也要计数
+        probe.write_text(
+            "# T\n\n一句话。\n\n" +
+            "\n".join(f'<img src="https://img.shields.io/badge/b{i}-blue" alt="b{i}">'
+                      for i in range(9)) +
+            "\n\n## 安装\n\n```sh\nnpm i -g x\n```\n", encoding="utf-8")
+        rep = Report()
+        check_single(probe, rep, [], {})
+        hit = any("徽章" in f.detail for f in rep.warns)
+        print(f"{'✓' if hit else '✗'} badge     HTML 徽章超过 7 个要提示")
+        if not hit:
+            ok = False
 
     print()
     print("自测通过" if ok else "自测失败")
