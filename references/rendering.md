@@ -2,7 +2,7 @@
 
 写作和验收都要用到几个固定数字。这一页只放实测结果，不放建议——建议在 [结构、版式与编辑示范](patterns.md)。
 
-测得条件：2026-11-01，Chrome 156 headless，用 CDP 的 `Emulation.setDeviceMetricsOverride` 设定视口，样本是线上 `DreamOfXM/diskwise` 的 README 页面，取 `article.markdown-body` 的 `getBoundingClientRect()`。复现方法见文末。
+测得条件：2026-11-01，Chrome 156 headless，用 CDP 的 `Emulation.setDeviceMetricsOverride` 设定视口，样本是一个公开仓库的 README 页面（一个 macOS 磁盘占用分析工具，当天版本），取 `article.markdown-body` 的 `getBoundingClientRect()`。这个数只取决于 GitHub 的页面结构，换成别的仓库结果相同；复现方法见文末，可以自己换一个仓库再跑一遍。
 
 ## 正文列宽固定 838px
 
