@@ -93,15 +93,15 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 - [Rendering and sizes](references/rendering.md): measured column width, type-size conversion and image-width behaviour, with a check script. (Chinese only.)
 - [How to draw the images](references/visual-craft.md): canvas and type-size tables, why only system fonts work, three ways to handle light/dark, and measured GIF encoding settings. (Chinese only.)
 - [Maintenance and regression](references/maintenance.md): how to compare old and new versions when editing the skill itself, instead of trusting the change note.
+- [`references/terms.txt`](references/terms.txt): this skill's own internal vocabulary, fed to `check-text.py --terms`. It governs how this repo names things, not what a user's README may say; hits in someone else's document are reported as hints only.
 - `scripts/`: `check-assets.py` flags images and file links that will break (including wrong case, `style="width:"`, `=WxH`, and the `<picture>` sources browsers actually load); `check-text.py` checks first-screen length, anchors, bilingual structure and terminology drift. Both ship with `--selftest`; column width is overridable with `--column-width`. `readme_md.py` holds the Markdown parsing both scripts share (fences, inline code) and is not an entry point.
 - `.github/workflows/check.yml`: on every push, runs both selftests and then points the scripts at these two READMEs, `SKILL.md` and `references/`. A green badge means the mechanical checks pass, nothing more.
-- [`terms.txt`](terms.txt): this skill's own internal vocabulary, fed to `check-text.py --terms`. It governs how this repo names things, not what a user's README may say; hits in someone else's document are reported as hints only.
 
 The scripts only decide the mechanical half, not whether the writing is any good. Inside this repository:
 
 ```sh
 python3 scripts/check-assets.py README.md
-python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
+python3 scripts/check-text.py README.md README.en.md --pair --terms references/terms.txt
 ```
 
 Once installed as a skill, the working directory is someone else's repository while the scripts and word list stay in the skill directory, so they must be called by absolute path or they will not be found:
@@ -109,7 +109,7 @@ Once installed as a skill, the working directory is someone else's repository wh
 ```sh
 SKILL=~/.claude/skills/readme-skill
 python3 "$SKILL/scripts/check-assets.py" README.md
-python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/terms.txt"
+python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"
 ```
 
 Exit code 0 means nothing will break; 1 means something must be fixed. Every finding is labelled as measured here, a platform limit, or an engineering threshold.

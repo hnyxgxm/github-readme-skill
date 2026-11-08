@@ -72,7 +72,7 @@
 ```sh
 SKILL=~/.claude/skills/readme-skill          # 换成实际安装位置
 python3 "$SKILL/scripts/check-assets.py" README.md README.en.md      # 图与文件链接会不会崩
-python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/terms.txt"   # 结构、双语、术语
+python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"   # 结构、双语、术语
 ```
 
 直接写 `scripts/check-assets.py` 只在本仓库内成立；装成 Skill 后目标仓库里没有这个文件，会直接报 No such file。

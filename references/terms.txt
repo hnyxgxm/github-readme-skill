@@ -2,7 +2,7 @@
 #
 # 用法（脚本和词表都在技能目录里，按绝对路径调用）：
 #   SKILL=~/.claude/skills/readme-skill
-#   python3 "$SKILL/scripts/check-text.py" README.md --terms "$SKILL/terms.txt"
+#   python3 "$SKILL/scripts/check-text.py" README.md --terms "$SKILL/references/terms.txt"
 #
 # 这份词表约束的是本仓库自己的写法。拿去扫用户的 README 时，
 # 命中也只报 WARN：「首屏」「路由页」是这个 Skill 的内部叫法，

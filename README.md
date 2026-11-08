@@ -93,15 +93,15 @@ npx skills add hnyxgxm/readme-skill -g
 - [渲染与尺寸](references/rendering.md)：正文列宽、字号换算与图片宽度行为的实测数据，附复核脚本。
 - [图怎么画](references/visual-craft.md)：画布与字号换算表、只用系统字体的依据、深浅色的三种做法、动图编码参数实测。
 - [维护与回归](references/maintenance.md)：改这份 Skill 时怎么做新旧版对照，不靠改动说明自证有效。
+- [`references/terms.txt`](references/terms.txt)：这份 Skill 自己对内叫法的词表，喂给 `check-text.py --terms`。它约束的是本仓库的写法，不是用户 README 的规定；扫别人的文档时命中也只报提示。
 - `scripts/`：`check-assets.py` 判图片和文件链接会不会崩（含大小写、`style="width:"`、`=宽x高`、`<picture>` 里的换格式源），`check-text.py` 判首屏、锚点、双语结构与术语；两个都带 `--selftest`，列宽可用 `--column-width` 覆盖。`readme_md.py` 是两个脚本共用的 Markdown 解析（围栏、行内代码），不是入口，不要直接跑。
 - `.github/workflows/check.yml`：每次推送跑自测，再拿两份 README、`SKILL.md` 和 `references/` 自查一遍。徽章绿只代表机械项过了，不代表写得好。
-- [`terms.txt`](terms.txt)：这份 Skill 自己对内叫法的词表，喂给 `check-text.py --terms`。它约束的是本仓库的写法，不是用户 README 的规定；扫别人的文档时命中也只报提示。
 
 两个脚本只判机械项，不判写得好不好。在本仓库内：
 
 ```sh
 python3 scripts/check-assets.py README.md
-python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
+python3 scripts/check-text.py README.md README.en.md --pair --terms references/terms.txt
 ```
 
 装成 Skill 之后，工作目录是别人的仓库，脚本和词表都留在技能目录里，要给绝对路径，否则必然 `No such file or directory`：
@@ -109,7 +109,7 @@ python3 scripts/check-text.py README.md README.en.md --pair --terms terms.txt
 ```sh
 SKILL=~/.claude/skills/readme-skill
 python3 "$SKILL/scripts/check-assets.py" README.md
-python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/terms.txt"
+python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$SKILL/references/terms.txt"
 ```
 
 退出码 0 表示没有会崩的项，1 表示有。每条结论都标了是实测、官方限制还是工程经验。

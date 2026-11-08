@@ -6,7 +6,7 @@
 用法:
     python3 <技能目录>/scripts/check-text.py README.md
     python3 <技能目录>/scripts/check-text.py README.md README.en.md --pair
-    python3 <技能目录>/scripts/check-text.py README.md --terms <技能目录>/terms.txt
+    python3 <技能目录>/scripts/check-text.py README.md --terms <技能目录>/references/terms.txt
     python3 <技能目录>/scripts/check-text.py --selftest
 
 注意：脚本要在目标仓库里跑，但脚本自身要按绝对路径调用。
@@ -32,6 +32,9 @@ from urllib.parse import unquote
 
 # 技能安装目录，用来定位 fixtures、terms 和自测样本
 SKILL_DIR = Path(__file__).resolve().parent.parent
+# 术语表放在 references/ 里：那三个目录是技能结构里保证会被打包的部分，
+# 放根目录时，只留 SKILL.md / scripts / references / assets 的安装器会把它裁掉。
+TERMS_HINT = SKILL_DIR / "references" / "terms.txt"
 
 # 围栏和行内代码的识别规则与 check-assets.py 共用同一份，
 # 两个脚本各抄一份时，改一处忘另一处就会让同一段 Markdown 得出相反结论。
@@ -602,7 +605,7 @@ def main(argv: list[str]) -> int:
         tp = Path(argv[idx + 1])
         if not tp.exists():
             print(f"找不到术语表: {tp}", file=sys.stderr)
-            print(f"这份词表在技能目录里，不在目标仓库：{SKILL_DIR / 'terms.txt'}", file=sys.stderr)
+            print(f"这份词表在技能目录里，不在目标仓库：{TERMS_HINT}", file=sys.stderr)
             return 2
         terms = load_terms(tp)
         args = [a for a in args if a != argv[idx + 1]]
