@@ -251,6 +251,12 @@ def svg_info(text: str) -> dict:
     # 字号：元素属性 / style 属性 / <style> 块中的声明，全部收集后取最小
     for attr in re.finditer(r"\bfont-size\s*[=:]\s*['\"]?\s*([\d.]+)", text, re.I):
         info["font_sizes"].append(float(attr.group(1)))
+    # font 简写里也带字号（font: 600 22px/1.5 ...）。不认简写就会退回默认的 16 单位，
+    # 于是字号本来就够的图被判成 11.2px。单位只认绝对长度，em/% 之类的相对值跳过。
+    for sh in re.finditer(r"\bfont\s*:\s*([^;'\"}>]+)", text, re.I):
+        m = re.search(r"([\d.]+)(?:px|pt|pc)\b", sh.group(1))
+        if m:
+            info["font_sizes"].append(float(m.group(1)))
     for fam in re.finditer(r"font-family\s*[=:]\s*['\"]?([^;'\"}>]+)", text, re.I):
         info["font_families"].append(fam.group(1).strip())
 
