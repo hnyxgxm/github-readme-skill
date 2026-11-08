@@ -8,9 +8,9 @@
 
 [安装](#安装) · [第一次使用](#第一次使用) · [前后对照](#前后对照) · [仓库结构](#仓库结构)
 
-![同一个项目首页改版前后：改前首屏堆满正文、安装埋在中段；改后首屏只有定位、徽章和一条安装命令](assets/before-after.zh.svg)
+![这份 README 改版前后：改前首屏堆满正文、安装埋在中段；改后首屏只有定位、徽章和一条安装命令](assets/before-after.zh.svg)
 
-同一个项目，用这份 Skill 重写前后的首屏。左边看不出下一步点哪，右边的安装就在首屏下面。
+这份 README 改版前后的首屏，左边看不出下一步点哪，右边的安装就在首屏下面。
 
 ## 安装
 
@@ -51,21 +51,22 @@ npx skills add hnyxgxm/github-readme-skill -g
 
 ## 前后对照
 
-两版完整页面：[改前 3196ad5](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [改后 568b9cd](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md)（[UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)）。都指向固定提交，下面的数字只是提要，点开看全文才算真看过。
+对照的是这份 README 自己。两版都在本仓库的提交历史里，链接写的是固定 commit：
+
+[改前 5bb1748](https://github.com/hnyxgxm/github-readme-skill/blob/5bb1748/README.md) → [改后 7c9648e](https://github.com/hnyxgxm/github-readme-skill/blob/7c9648e/README.md)
+
+下表每一项都能在这两版里数出来，点开任选一版就能自己核对。
 
 | 对比项 | 改前 | 改后 |
 | --- | --- | --- |
-| 首屏 | 无图；一段形容词式定位，接 9 条示范与验证记录 | 一句定位 + 三个锚点 + 一张主证据图 |
-| 安装 | 只有 `python3 scripts/install.py`，埋在「切换现有安装」一节末尾 | `npx skills add` 一条命令，「安装」在第 22 行独立成节 |
-| 前 20 行链接数 | 15 | 6（1 个语言切换、3 个页内锚点、2 张图的链接） |
-| H2 章节 | 4 个：Git 维护、切换、恢复、验证 | 6 个：改版流程、安装、试任务、看示范、边界、许可 |
-| 全文 | 85 行 / 0 图 | 116 行 / 1 张主证据图 |
+| 首屏 | 一句定位 + 四个锚点，第一节是「它改出来的样子」 | 一句定位 + 三个徽章 + 一张前后对照图 |
+| 安装 | 第 57 行，第 4 个 H2，前面压着 47 行 | 第 22 行，第 1 个 H2 |
+| 徽章 | 1 个（只有 CI） | 3 个（CI、MIT 许可、Node 22.20+） |
+| 图 | 0 张 | 1 张 |
+| H2 章节 | 8 个，其中三个是「它改出来的样子」「它解决什么」「怎么用起来」这样的句子 | 7 个，全是名词短语 |
+| 全文 | 126 行 | 120 行 |
 
-改前的首屏是这种口气：
-
-> 面向网页、桌面软件、移动 App 和 Web 工作台的设计工作流。……通过内容驱动的方向探索、构图与排印、材料样片、连续交互和正向审美验收，帮助模型做出完整而有吸引力的界面……
-
-四个 H2 只服务于已经装过的人。改版没有靠换措辞取胜，而是把内容分了一次层：判断依据留在首屏，过程细节退回 `references/`。
+改前写得不算差，问题在顺序：读者最想要的那件事——怎么装——排在第 47 行之后，前面先讲它改过什么、解决什么、怎么用起来。改版把安装提到第一个 H2，把证据挪到安装之后。
 
 ## 解决的问题
 
@@ -113,7 +114,7 @@ python3 "$SKILL/scripts/check-text.py" README.md README.en.md --pair --terms "$S
 - 它不会替你决定许可证、发布渠道或推送时机；写文档不等于授权提交、推送、部署或安装扩展。
 - README 的渲染受平台限制：GitHub 会剥掉脚本与内联样式，做不出水平标签，也不给 Markdown 排版容器；关键内容要在常规宽度和约 390px 窄屏都能读。
 - 本技能的 frontmatter 声明了 `allowed-tools`。按 [skills 的兼容表](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)，Qoder、Kiro CLI、Zencoder 不支持这个字段，在这三个客户端上它会被忽略，工具权限仍按客户端自己的规则走；Claude Code、Codex 会照它限制。
-- 事实以仓库当前状态为准。本仓库的示例引用了 [UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill) 的提交历史，那两个链接指向的是固定 commit，不会随对方仓库演进而改变。
+- 事实以仓库当前状态为准。前后对照里的两个链接指向本仓库自己的固定 commit，不随之后的改动而变。
 
 ## 许可
 

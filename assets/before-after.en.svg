@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="The same front page, before and after">
-  <title>The same front page, before and after a rewrite</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="This README, before and after">
+  <title>This README, before and after a rewrite</title>
   <desc>Left, before: the first screen is a wall of body text and a demo list, with install buried mid-document. Right, after: the first screen holds only the project name, one positioning line, three badges and one install command, with install immediately after it.</desc>
   <style>
     .bg { fill: #0d1117; }

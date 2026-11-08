@@ -155,15 +155,15 @@
 一个安装器同时支持多个客户端时，先给一条共同命令：
 
 ```sh
-npx skills add DreamOfXM/ui-taste-skill -g
+npx skills add hnyxgxm/github-readme-skill -g
 ```
 
 再补一句“按提示选择客户端，或用 `-a` 指定目标”，差异写成三行同构短列表，每行只换参数：
 
 ```markdown
-- **Claude Code**（`-a claude-code`）：`~/.claude/skills/`；新会话输入 `/` 选择 `ui-taste-skill`
-- **Codex**（`-a codex`）：`~/.agents/skills/`；新会话输入 `$ui-taste-skill`
-- **Qoder Desktop**（`-a qoder`）：`~/.qoder/skills/`；新会话输入 `/` 选择 `ui-taste-skill`
+- **Claude Code**（`-a claude-code`）：`~/.claude/skills/`；新会话输入 `/` 选择 `github-readme-skill`
+- **Codex**（`-a codex`）：`~/.agents/skills/`；新会话输入 `$github-readme-skill`
+- **Qoder Desktop**（`-a qoder`）：`~/.qoder/skills/`；新会话输入 `/` 选择 `github-readme-skill`
 ```
 
 读者应该看到“一个方法、三个参数”，而不是“三种方法”：不给每个客户端各写一段安装，也不把同一命令改写成插件市场、ZIP 上传之类的并列渠道。真正的非 Node 后备用一句话收在安装段末尾，并写明缺什么才需要走它。某客户端确实不支持统一渠道时，在该分支写出原因和替代步骤，再与主路径并列。

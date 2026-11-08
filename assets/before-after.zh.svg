@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="同一个项目首页改版前后">
-  <title>同一个项目首页，改版前后</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="这份 README 改版前后">
+  <title>这份 README，改版前后</title>
   <desc>左边是改前：首屏堆着一整屏正文和示范清单，安装命令埋在中段。右边是改后：首屏只有项目名、一句定位、三个徽章和一条安装命令，首屏之后紧跟安装。</desc>
   <style>
     .bg { fill: #0d1117; }

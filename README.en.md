@@ -8,9 +8,9 @@ A skill that makes AI coding assistants decide how much a README should carry, t
 
 [Install](#install) · [First run](#first-run) · [Before and after](#before-and-after) · [Repository layout](#repository-layout)
 
-![The same front page before and after a rewrite: on the left the first screen is a wall of text with install buried mid-document; on the right it holds only a positioning line, badges and one install command](assets/before-after.en.svg)
+![This README before and after a rewrite: on the left the first screen is a wall of text with install buried mid-document; on the right it holds only a positioning line, badges and one install command](assets/before-after.en.svg)
 
-The same project's first screen before and after a rewrite driven by this skill. On the left you cannot tell what to do next; on the right install sits directly below.
+This README's first screen, before and after. On the left you cannot tell what to do next; on the right install sits directly below.
 
 ## Install
 
@@ -51,21 +51,22 @@ Add "review only, don't touch the files" to skip edits; scope a fix to one secti
 
 ## Before and after
 
-Both full pages: [before 3196ad5](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md) → [after 568b9cd](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md) ([UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill)). Both point at fixed commits; the numbers below are a précis, and opening the full pages is what actually counts as looking.
+This compares the README you are reading with its own previous version. Both live in this repository's history, pinned to fixed commits:
+
+[before 5bb1748](https://github.com/hnyxgxm/github-readme-skill/blob/5bb1748/README.en.md) → [after 7c9648e](https://github.com/hnyxgxm/github-readme-skill/blob/7c9648e/README.en.md)
+
+Every row below can be counted in either version; open one and check for yourself.
 
 | | Before | After |
 | --- | --- | --- |
-| First screen | no image; one paragraph of adjectives, then 9 demo and validation entries | one positioning line + three anchors + one evidence image |
-| Install | only `python3 scripts/install.py`, buried at the end of "switching an existing install" | `npx skills add`, one command, getting its own section at line 22 |
-| Links in first 20 lines | 15 | 6 (one language switch, three in-page anchors, two image links) |
-| H2 sections | 4: Git maintenance, switching, restoring, verification | 6: rewrite process, install, try one task, see the demo, limits, license |
-| Whole page | 85 lines / 0 images | 116 lines / 1 evidence image |
+| First screen | one positioning line + four anchors, the first section being "what it produced" | one positioning line + three badges + one before/after image |
+| Install | line 57, the fourth H2, with 47 lines above it | line 22, the first H2 |
+| Badges | 1 (CI only) | 3 (CI, MIT licence, Node 22.20+) |
+| Images | 0 | 1 |
+| H2 sections | 8, three of them sentences ("what it produced", "what it fixes", "how it works") | 7, all noun phrases |
+| Whole page | 126 lines | 120 lines |
 
-The opening paragraph before the rewrite read, in translation from the Chinese original:
-
-> A design workflow for web pages, desktop software, mobile apps and web workbenches. … through content-driven direction exploration, composition and typography, material samples, continuous interaction and positive aesthetic acceptance, it helps the model produce complete and attractive interfaces …
-
-All four H2 sections were written for people who already had it installed. The rewrite won on layering rather than on vocabulary: the judgement stays on the front page, the process detail moved back into `references/`.
+The old version was not badly written; it was badly ordered. The thing a reader wants most — how to install — sat behind 47 lines that first explained what had been rewritten, what it fixes and how it works. The rewrite moved install to the first H2 and pushed the evidence below it.
 
 ## What it solves
 
@@ -113,7 +114,7 @@ Exit code 0 means nothing will break; 1 means something must be fixed. Every fin
 - It will not choose a license, a distribution channel or a push moment for you. Writing docs is not authorization to commit, push, deploy or install extensions.
 - README rendering is constrained by the platform: GitHub strips scripts and inline CSS, cannot produce horizontal tabs, and gives Markdown no layout containers. Anything important must read at normal width and at roughly 390px.
 - This skill's frontmatter declares `allowed-tools`. Per the [skills compatibility table](https://github.com/vercel-labs/skills/blob/main/docs/agents.md), Qoder, Kiro CLI and Zencoder do not support that field — there it is ignored and tool permissions follow the client's own rules; Claude Code and Codex will honour it.
-- Facts are pinned to repository state. The samples here cite [UI Taste Skill](https://github.com/DreamOfXM/ui-taste-skill) commit history, and both links point at fixed commits, so they will not drift as that repository evolves.
+- Facts are pinned to repository state. The two links under "Before and after" point at this repository's own fixed commits, so they will not drift as the document changes.
 
 ## License
 
