@@ -92,6 +92,20 @@ INSTALL_HEADING = re.compile(
 # [经验] 只在中文文档上跑黑话扫描：onboarding 这类词在英文原文里是正常用词。
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
+# [规则] SKILL.md §6：H2 用行业通用专业词汇，不写成口头语句。
+# 只查 README；技能自身的 SKILL.md / references 有说明性长标题，不适用。
+COLLOQUIAL_H2_RE = re.compile(r"它|谁|里头|咱们|啥|看一下|试试|怎么办")
+
+
+def heading_wording_issues(title: str) -> list[str]:
+    """§6：标题是索引，不是句子。返回这个 H2 的用词问题。"""
+    out = []
+    if COLLOQUIAL_H2_RE.search(title):
+        out.append("用了口头语")
+    if len(CJK_PATTERN.findall(title)) > 8:
+        out.append("太长，像一句话")
+    return out
+
 # 只把真命令拿来对照，避免把自然语言示例当成命令不一致。
 # 首屏判"有没有可复制的动作"也用它，所以覆盖常见包管理器，
 # 但不含 cd / export / mkdir 这类单独出现时说明不了安装的指令。
@@ -284,6 +298,15 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
             rep.add("WARN", name, f"第 {ln} 行", f"H{prev} 直接跳到 H{lvl}「{title[:24]}」",
                     "[规则] SKILL.md §6：不跳级")
         prev = lvl
+
+    # 标题用词：只查 README；技能自身的说明性长标题不受这条约束
+    if is_readme:
+        for lvl, title, ln in heads:
+            if lvl == 2:
+                for issue in heading_wording_issues(title):
+                    rep.add("WARN", name, f"第 {ln} 行",
+                            f"二级标题「{title}」{issue}",
+                            "[规则] SKILL.md §6：H2 用行业通用专业词汇")
 
     # 首屏长度：到第一个 H2 之前的行数就是读者滚屏前会看到的内容量
     first_h2 = next((ln for lvl, _, ln in heads if lvl == 2), None)
@@ -651,6 +674,21 @@ def selftest() -> int:
               f"（{len(install_cases) - len(wrong)}/{len(install_cases)}）")
         if wrong:
             print(f"   不符: {', '.join(wrong)}")
+            ok = False
+
+        # 10. 标题用词：口头语和长句标题要报，专业词汇不报
+        wording_cases = {
+            "它能做什么": True, "里头有什么": True, "看它先给结论": True,
+            "谁适合用": True, "这个工具到底应该怎么用才对": True,
+            "安装": False, "用法": False, "功能": False, "适用场景": False,
+            "常见问题": False, "Install": False, "Use cases": False,
+        }
+        wording_bad = [(t, v) for t, v in wording_cases.items()
+                       if bool(heading_wording_issues(t)) != v]
+        print(f"{'✓' if not wording_bad else '✗'} heading   口头语标题要报，专业词汇不报"
+              f"（{len(wording_cases) - len(wording_bad)}/{len(wording_cases)}）")
+        if wording_bad:
+            print(f"   错判: {', '.join(t for t, _ in wording_bad)}")
             ok = False
 
     print()
