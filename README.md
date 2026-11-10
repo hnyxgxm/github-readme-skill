@@ -6,7 +6,7 @@
 
 让 AI 编程助手先判断一份 README 该承担多少内容，再把项目的真实能力组织成陌生读者能判断、能上手的首页。它管的是取舍和证据，不是辞藻。
 
-[安装](#安装) · [第一次使用](#第一次使用) · [前后对照](#前后对照) · [仓库结构](#仓库结构)
+[安装](#安装) · [第一次使用](#第一次使用) · [前后对照](#前后对照) · [开发](#开发)
 
 ![这份 README 改版前后：改前首屏堆满正文、安装埋在中段；改后首屏只有定位、徽章和一条安装命令](assets/before-after.zh.svg)
 
@@ -63,8 +63,10 @@ npx skills add hnyxgxm/github-readme-skill -g
 | 安装 | 第 57 行，第 4 个 H2，前面压着 47 行 | 第 22 行，第 1 个 H2 |
 | 徽章 | 1 个（只有 CI） | 3 个（CI、MIT 许可、Node 22.20+） |
 | 图 | 0 张 | 1 张 |
-| H2 章节 | 8 个，其中三个是「它改出来的样子」「它解决什么」「怎么用起来」这样的句子 | 7 个，全是名词短语 |
+| H2 章节 | 8 个，其中三个是一句话（「它改出来的样子」「它解决什么」「怎么用起来」） | 7 个，都是短标题，没有一句话当标题 |
 | 全文 | 126 行 | 120 行 |
+
+行号、章节点数和行数都按上面两个固定 commit 数；这份 README 之后还会改，所以这里不写"现在"的数字，要看现在点开文件自己数。
 
 改前写得不算差，问题在顺序：读者最想要的那件事——怎么装——排在第 47 行之后，前面先讲它改过什么、解决什么、怎么用起来。改版把安装提到第一个 H2，把证据挪到安装之后。
 
@@ -76,22 +78,11 @@ npx skills add hnyxgxm/github-readme-skill -g
 - **安装写成五段**：多个客户端共用一条 `npx skills` 命令，差异只落在目标名、目录和启用方式；不给同一个客户端并列两套渠道。
 - **双语只翻一半**：两版章节语义对应，命令、包名、版本条件和 URL 原样保留，不把中文的有条件描述强化成保证。
 
-## 仓库结构
+## 开发
 
-- [SKILL.md](SKILL.md)：主链，八节，从判形态到验收。
-- [结构、版式与编辑示范](references/patterns.md)：七类项目的骨架、首屏编排、证据矩阵、安装的「一条路径、参数分叉」写法、双语取舍。
-- [范例清单](references/examples.md)：14 个真实仓库首页的逐项取舍，以及不该从这些样本推出什么。
-- [验收方法](references/acceptance.md)：形态门、事实与边界、按分支走通、首屏证据、双语对照、渲染与收口口径。
-- [渲染与尺寸](references/rendering.md)：正文列宽、字号换算与图片宽度行为的实测数据。
-- [图怎么画](references/visual-craft.md)：画布与字号换算表、只用系统字体的依据、深浅色的三种做法、动图编码参数实测。
-- [维护与回归](references/maintenance.md)：改这份 Skill 时怎么做新旧版对照，不靠改动说明自证有效。
-- [`references/terms.txt`](references/terms.txt)：这份 Skill 自己对内叫法的词表，喂给 `check-text.py --terms`。它约束的是本仓库的写法，不是用户 README 的规定；扫别人的文档时命中也只报提示。
-- `scripts/check-assets.py`：判图片和文件链接会不会崩——字号、远程字体、缺 viewBox、体积、宽高、路径大小写，也认 `style="width:"`、`=宽x高`、`<picture>` 里的换格式源。
-- `scripts/check-text.py`：判首屏行数与首屏有没有动作或证据、徽章数量、锚点、双语结构与术语漂移。
-- `scripts/readme_md.py`：两个脚本共用的 Markdown 解析（围栏、行内代码），不是入口，不要直接跑。
-- `.github/workflows/check.yml`：每次推送跑两个脚本的自测，再拿两份 README、`SKILL.md` 和 `references/` 自查一遍。
+判断方法、七类骨架、范例、验收和画图规范都在 [SKILL.md](SKILL.md) 与 `references/` 里；改这套 Skill 之前先读[维护与回归](references/maintenance.md)。
 
-两个脚本都带 `--selftest`；列宽可用 `--column-width` 覆盖，`check-assets.py` 加 `--check-remote` 会去验外链可达。它们只用 python3 标准库（3.8 以上），不需要 pip 装东西。在本仓库内：
+两个脚本只用 python3 标准库（3.8 以上），都带 `--selftest`；列宽可用 `--column-width` 覆盖，`check-assets.py` 加 `--check-remote` 会去验外链可达。在本仓库内：
 
 ```sh
 python3 scripts/check-assets.py README.md

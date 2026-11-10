@@ -6,7 +6,7 @@
 
 A skill that makes AI coding assistants decide how much a README should carry, then turn a project's real capabilities into a front page a stranger can judge and start using. It governs triage and evidence, not prose polish.
 
-[Install](#install) · [First run](#first-run) · [Before and after](#before-and-after) · [Repository layout](#repository-layout)
+[Install](#install) · [First run](#first-run) · [Before and after](#before-and-after) · [Development](#development)
 
 ![This README before and after a rewrite: on the left the first screen is a wall of text with install buried mid-document; on the right it holds only a positioning line, badges and one install command](assets/before-after.en.svg)
 
@@ -63,8 +63,10 @@ Every row below can be counted in either version; open one and check for yoursel
 | Install | line 57, the fourth H2, with 47 lines above it | line 22, the first H2 |
 | Badges | 1 (CI only) | 3 (CI, MIT licence, Node 22.20+) |
 | Images | 0 | 1 |
-| H2 sections | 8, three of them sentences ("what it produced", "what it fixes", "how it works") | 7, all noun phrases |
+| H2 sections | 8, three of them full sentences ("what it produced", "what it fixes", "how it works") | 7, all short headings, none of them a sentence |
 | Whole page | 126 lines | 120 lines |
+
+Line numbers, section counts and line counts are taken from the two fixed commits above. This README keeps changing, so no "current" numbers are given here — open the file and count if you need them.
 
 The old version was not badly written; it was badly ordered. The thing a reader wants most — how to install — sat behind 47 lines that first explained what had been rewritten, what it fixes and how it works. The rewrite moved install to the first H2 and pushed the evidence below it.
 
@@ -76,22 +78,11 @@ The old version was not badly written; it was badly ordered. The thing a reader 
 - **Installation split into five sections**: every client shares one `npx skills` command, and differences land only in target name, directory and how it is enabled; the same client never gets two parallel channels.
 - **Half-translated bilingual docs**: the two versions keep matching sections, while commands, package names, version constraints and URLs stay verbatim; a qualified claim in Chinese never becomes a guarantee in English.
 
-## Repository layout
+## Development
 
-- [SKILL.md](SKILL.md): the main chain, eight sections from form to acceptance.
-- [Structure, layout and editing patterns](references/patterns.md): skeletons for seven project types, first-screen composition, the evidence matrix, "one install path, branching parameters", and bilingual trade-offs.
-- [Examples](references/examples.md): per-item triage across 14 real repository front pages, plus what those samples do not justify.
-- [Acceptance method](references/acceptance.md): form gate, facts and limits, walking every branch, first-screen evidence, bilingual parity, rendering and sign-off criteria.
-- [Rendering and sizes](references/rendering.md): measured column width, type-size conversion and image-width behaviour. (Chinese only.)
-- [How to draw the images](references/visual-craft.md): canvas and type-size tables, why only system fonts work, three ways to handle light/dark, and measured GIF encoding settings. (Chinese only.)
-- [Maintenance and regression](references/maintenance.md): how to compare old and new versions when editing the skill itself, instead of trusting the change note.
-- [`references/terms.txt`](references/terms.txt): this skill's own internal vocabulary, fed to `check-text.py --terms`. It governs how this repo names things, not what a user's README may say; hits in someone else's document are reported as hints only.
-- `scripts/check-assets.py`: flags images and file links that will break — type sizes, remote fonts, missing viewBox, file weight, dimensions, wrong case, plus `style="width:"`, `=WxH` and the `<picture>` sources browsers actually load.
-- `scripts/check-text.py`: checks first-screen length and whether the first screen offers an action or evidence, badge count, anchors, bilingual structure and terminology drift.
-- `scripts/readme_md.py`: the Markdown parsing both scripts share (fences, inline code); not an entry point, do not run it directly.
-- `.github/workflows/check.yml`: on every push, runs both selftests and then points the scripts at these two READMEs, `SKILL.md` and `references/`.
+The judging method, the seven skeletons, the examples, the acceptance checks and the drawing rules all live in [SKILL.md](SKILL.md) and `references/`; read [Maintenance and regression](references/maintenance.md) before changing the skill itself.
 
-Both scripts ship with `--selftest`; column width is overridable with `--column-width`, and `check-assets.py --check-remote` also verifies that external links resolve. They use nothing but the Python 3 standard library (3.8 or newer), so there is no package to install. Inside this repository:
+Both scripts use nothing but the Python 3 standard library (3.8 or newer) and ship with `--selftest`; column width is overridable with `--column-width`, and `check-assets.py --check-remote` also verifies that external links resolve. Inside this repository:
 
 ```sh
 python3 scripts/check-assets.py README.md
