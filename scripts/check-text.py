@@ -96,6 +96,22 @@ CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 # 只查 README；技能自身的 SKILL.md / references 有说明性长标题，不适用。
 COLLOQUIAL_H2_RE = re.compile(r"它|谁|里头|咱们|啥|看一下|试试|怎么办")
 
+# [规则] SKILL.md §7：安装段不写安装目录，也不写装完怎么在宿主里调用。
+# 这两样是安装器的输出和读者已有的操作习惯，不是他要做的动作；
+# 写进去只会随客户端升级过期，而且一条命令讲三遍，读起来像有三种装法。
+INSTALL_ONLY = re.compile(r"安装|(?<![A-Za-z])install(?:ation|ing)?(?![A-Za-z])", re.I)
+INSTALL_DIR_RE = re.compile(
+    r"(?:~|\$\{?HOME\}?|/Users/[^\s/]+)/"
+    r"(?:[^\s)\]\"'，。]*?)?skills?/", re.I)
+INSTALL_LAUNCH_RE = re.compile(
+    r"(?:新|新的)(?:会话|任务)[^。\n]{0,24}(?:输入|敲|选)|"
+    r"(?:输入|敲|type)\s*[`\"']?(?:/|\$)[`\"']?", re.I)
+
+# [规则] SKILL.md §8：脚本输出是修稿用的输入，不是给读者的产出。
+# 只认输出行的形状，不认脚本名——开发节里出现命令是正当的。
+SCRIPT_OUTPUT_LINE_RE = re.compile(
+    r"^\s*(?:!\s*)?(?:FAIL|WARN)\s|^\s*\S+\.md:\s*\d+\s*行")
+
 # [规则] SKILL.md §5、§6：仓库文件清单是开发细节，不进 README。
 # 这类标题下面必然是一份文件树或脚本清单，所以按标题判，不去猜正文。
 # 单说「目录」不算：教程类的章节目录是正当用法，有歧义的不报。
@@ -109,6 +125,18 @@ FILE_TREE_TITLES_EN = {
     "folder structure", "directory structure",
 }
 FILE_TREE_ISSUE = "是仓库文件清单，属于开发细节，不进 README"
+
+
+def install_section_issues(seg: str) -> list[tuple[str, str]]:
+    """§7：安装段只讲怎么装。返回 (问题, 依据) 列表。"""
+    out = []
+    for m in INSTALL_DIR_RE.finditer(seg):
+        out.append((f"写了安装目录 {m.group(0).strip()}",
+                    "[规则] SKILL.md §7：目录是安装器的输出，不写进 README"))
+    for m in INSTALL_LAUNCH_RE.finditer(seg):
+        out.append((f"写了装完怎么调用「{m.group(0).strip()[:32]}」",
+                    "[规则] SKILL.md §7：启用属于使用，不塞进安装段"))
+    return out
 
 
 def heading_wording_issues(title: str) -> list[str]:
@@ -556,6 +584,23 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
         rep.add("WARN", name, "首屏", f"{n_badge} 个徽章，超过 {BADGE_MAX} 个",
                 f"[规则] SKILL.md §4：徽章不超过 {BADGE_MAX} 个")
 
+    # 安装段：不写安装目录，不写装完怎么调用
+    if is_readme:
+        for idx, (lvl, title, ln) in enumerate(heads):
+            if lvl != 2 or not INSTALL_ONLY.search(title):
+                continue
+            end = heads[idx + 1][2] if idx + 1 < len(heads) else len(lines) + 1
+            seg = "\n".join(lines[ln:end - 1])
+            for issue, rule in install_section_issues(seg):
+                rep.add("WARN", name, f"第 {ln} 行起的安装段", issue, rule)
+            break
+
+        # 脚本输出不进正文：诊断是修稿用的输入，读者要看的是成品
+        for i, line in enumerate(lines, 1):
+            if SCRIPT_OUTPUT_LINE_RE.search(line):
+                rep.add("WARN", name, f"第 {i} 行", "贴了脚本检查输出",
+                        "[规则] SKILL.md §8：诊断是修稿用的输入，读者要看的是成品")
+
     # 版本与系统下限：写进 README 的数字要能在仓库里找到出处，写高了比没写更糟
     if is_readme:
         for ln, tech, ver, ev in version_claim_issues(path):
@@ -897,6 +942,37 @@ def selftest() -> int:
               f"（{len(wording_cases) - len(wording_bad)}/{len(wording_cases)}）")
         if wording_bad:
             print(f"   错判: {', '.join(t for t, _ in wording_bad)}")
+            ok = False
+
+        install_cases = {
+            "`~/.claude/skills/`；新会话输入 `/`": True,
+            "新任务输入 `/` 选择 github-readme-skill": True,
+            "type `/` in a new session": True,
+            "按提示选择客户端，或用 `-a` 指定：claude-code、codex、qoder": False,
+            "在终端任意目录运行 `npx skills add x -g`": False,
+            "`-g` 是用户级安装，所有项目可用": False,
+            "把整个仓库目录复制到技能目录，重启客户端": False,
+        }
+        install_bad = [(t, v) for t, v in install_cases.items()
+                       if bool(install_section_issues(t)) != v]
+        print(f"{'✓' if not install_bad else '✗'} install   安装段写目录或宿主调用要报"
+              f"（{len(install_cases) - len(install_bad)}/{len(install_cases)}）")
+        if install_bad:
+            print(f"   错判: {', '.join(t for t, _ in install_bad)}")
+            ok = False
+
+        output_cases = {
+            "! WARN 第 11 行 — 二级标题用了口头语": True,
+            "README.md: 126 行, H1 1, H2 8, 徽章 1": True,
+            "python3 scripts/check-text.py README.md": False,
+            "首屏只放四件套，约 25 行以内": False,
+        }
+        output_bad = [(t, v) for t, v in output_cases.items()
+                      if bool(SCRIPT_OUTPUT_LINE_RE.search(t)) != v]
+        print(f"{'✓' if not output_bad else '✗'} output    贴脚本输出要报，脚本命令不报"
+              f"（{len(output_cases) - len(output_bad)}/{len(output_cases)}）")
+        if output_bad:
+            print(f"   错判: {', '.join(t for t, _ in output_bad)}")
             ok = False
 
     # 11. 版本声明：仓库里有依据且一致时不报，写高了报出仓库里的值，查不到依据给提示
