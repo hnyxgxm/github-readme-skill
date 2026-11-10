@@ -291,6 +291,180 @@ def head_window(lines: list[str]) -> tuple[int, str]:
 
 # ---------------------------------------------------------------- 单文件检查
 
+# ---------------------------------------------------------------- 版本声明核对
+
+# [规则] SKILL.md §5、§8：README 写的版本与系统下限，要能在仓库里找到出处。
+# 只认「技术名 + 数字 + 下限写法」的组合，避免把发布记录里的普通版本号当成安装要求。
+# 行内已经给出链接或注明来源的跳过：作者指过出处，就不必再去仓库里找。
+VERSION_CLAIM_RE = re.compile(
+    r"(?P<tech>Node(?:\.js)?|node(?:\.js)?|Python|python|Golang|Go|go|Rust|rust"
+    r"|Swift|swift|Ruby|ruby|Java|java|macOS|MacOS|iOS|IOS)"
+    r"\s*(?:版本)?\s*(?P<op>>=|≥|不低于|至少|要求|需要)?\s*v?"
+    r"(?P<ver>\d+(?:\.\d+){0,2})\s*"
+    r"(?P<tail>\+|以上|及以上|或更高|or later|or above)?"
+)
+LOWER_BOUND_OPS = {">=", "≥", "不低于", "至少", "要求", "需要"}
+SOURCE_HINTS_RE = re.compile(r"https?://|出处|来源|依据|官方|source", re.I)
+
+
+def _read_soft(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _versions_in(s: str) -> list[str]:
+    return re.findall(r"\d+(?:\.\d+){0,2}", s)
+
+
+def _repo_root(readme: Path) -> Path:
+    """README 可能在仓库根，也可能在 packages/x/ 下，向上找一层就够。"""
+    start = readme.parent.resolve()
+    marks = (".git", "package.json", "pyproject.toml", "Cargo.toml",
+             "Package.swift", "go.mod", "setup.py", "pom.xml")
+    for cand in [start] + list(start.parents)[:3]:
+        if any((cand / m).exists() for m in marks):
+            return cand
+    return start
+
+
+def _ci_matrix(root: Path, key: str):
+    wf = root / ".github" / "workflows"
+    if not wf.is_dir():
+        return None
+    pat = re.compile(key + r"\s*:\s*\[?([^\n\]}]*)")
+    for f in sorted(list(wf.glob("*.yml")) + list(wf.glob("*.yaml"))):
+        m = pat.search(_read_soft(f))
+        if m:
+            nums = _versions_in(m.group(1))
+            if nums:
+                return nums, f".github/workflows/{f.name}"
+    return None
+
+
+def _evidence(tech: str, root: Path):
+    """返回 (仓库里写的版本号列表, 出处)，找不到依据返回 None。"""
+    t = tech.lower()
+    if t.startswith("node"):
+        pkg = root / "package.json"
+        if pkg.is_file():
+            try:
+                data = json.loads(_read_soft(pkg) or "{}")
+            except ValueError:
+                data = {}
+            eng = data.get("engines") if isinstance(data, dict) else None
+            if isinstance(eng, dict) and isinstance(eng.get("node"), str):
+                return _versions_in(eng["node"]), "package.json engines.node"
+        for name in (".nvmrc", ".node-version"):
+            f = root / name
+            if f.is_file():
+                nums = _versions_in(_read_soft(f))
+                if nums:
+                    return nums, name
+        return _ci_matrix(root, "node-version")
+    if t == "python":
+        py = root / "pyproject.toml"
+        if py.is_file():
+            m = re.search(r"requires-python\s*=\s*[\"']([^\"']+)", _read_soft(py))
+            if m:
+                return _versions_in(m.group(1)), "pyproject.toml requires-python"
+        for name in ("setup.py", "setup.cfg"):
+            f = root / name
+            if f.is_file():
+                m = re.search(r"python_requires\s*=\s*[\"']([^\"']+)", _read_soft(f))
+                if m:
+                    return _versions_in(m.group(1)), name
+        f = root / ".python-version"
+        if f.is_file():
+            nums = _versions_in(_read_soft(f))
+            if nums:
+                return nums, ".python-version"
+        return _ci_matrix(root, "python-version")
+    if t in ("go", "golang"):
+        gm = root / "go.mod"
+        if gm.is_file():
+            m = re.search(r"^go\s+(\S+)", _read_soft(gm), re.M)
+            if m:
+                return _versions_in(m.group(1)), "go.mod"
+        return None
+    if t == "rust":
+        ct = root / "Cargo.toml"
+        if ct.is_file():
+            m = re.search(r"rust-version\s*=\s*[\"']([^\"']+)", _read_soft(ct))
+            if m:
+                return _versions_in(m.group(1)), "Cargo.toml rust-version"
+        return None
+    if t in ("macos", "ios"):
+        ps = root / "Package.swift"
+        if ps.is_file():
+            m = re.search(r"\.(?:macOS|iOS)\((?:\.v(\d+)|[\"']([\d.]+)[\"'])\)", _read_soft(ps))
+            if m:
+                return _versions_in(m.group(1) or m.group(2)), "Package.swift platforms"
+        plist = root / "Info.plist"
+        if plist.is_file():
+            m = re.search(r"LSMinimumSystemVersion</key>\s*<string>([\d.]+)", _read_soft(plist))
+            if m:
+                return _versions_in(m.group(1)), "Info.plist LSMinimumSystemVersion"
+        return None
+    if t == "swift":
+        ps = root / "Package.swift"
+        if ps.is_file():
+            m = re.search(r"swift-tools-version\s*:\s*([\d.]+)", _read_soft(ps))
+            if m:
+                return _versions_in(m.group(1)), "Package.swift swift-tools-version"
+        return None
+    if t == "ruby":
+        f = root / ".ruby-version"
+        if f.is_file():
+            nums = _versions_in(_read_soft(f))
+            if nums:
+                return nums, ".ruby-version"
+        for g in sorted(root.glob("*.gemspec")):
+            m = re.search(r"required_ruby_version\s*=\s*[\"']([^\"']+)", _read_soft(g))
+            if m:
+                return _versions_in(m.group(1)), f"{g.name} required_ruby_version"
+        return None
+    if t == "java":
+        pom = root / "pom.xml"
+        if pom.is_file():
+            m = re.search(r"<(?:java\.version|maven\.compiler\.source)>([\d.]+)<", _read_soft(pom))
+            if m:
+                return _versions_in(m.group(1)), "pom.xml"
+        for g in sorted(root.glob("build.gradle*")):
+            m = re.search(r"sourceCompatibility\s*=?\s*[\"']?([\d.]+)", _read_soft(g))
+            if m:
+                return _versions_in(m.group(1)), g.name
+        return None
+    return None
+
+
+def _version_fits(claim: str, evidence: list[str]) -> bool:
+    """22.20 与 >=22.20.0 算一致；3.11 与 >=3.9 不算。"""
+    for ev in evidence:
+        if claim == ev or ev.startswith(claim) or claim.startswith(ev):
+            return True
+    return False
+
+
+def version_claim_issues(readme: Path) -> list[tuple[int, str, str, object]]:
+    root = _repo_root(readme)
+    out, seen = [], set()
+    for i, line in enumerate(_read_soft(readme).splitlines(), 1):
+        if SOURCE_HINTS_RE.search(line):
+            continue
+        for m in VERSION_CLAIM_RE.finditer(line):
+            if m.group("op") not in LOWER_BOUND_OPS and not m.group("tail"):
+                continue
+            tech, ver = m.group("tech"), m.group("ver")
+            key = (tech.lower(), ver)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((i, tech, ver, _evidence(tech, root)))
+    return out
+
+
 def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, list[str]]) -> dict:
     name = path.name
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -381,6 +555,19 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
     if is_readme and n_badge > BADGE_MAX:
         rep.add("WARN", name, "首屏", f"{n_badge} 个徽章，超过 {BADGE_MAX} 个",
                 f"[规则] SKILL.md §4：徽章不超过 {BADGE_MAX} 个")
+
+    # 版本与系统下限：写进 README 的数字要能在仓库里找到出处，写高了比没写更糟
+    if is_readme:
+        for ln, tech, ver, ev in version_claim_issues(path):
+            if ev is None:
+                rep.add("WARN", name, f"第 {ln} 行",
+                        f"提到 {tech} {ver}，仓库里找不到对应依据",
+                        "[提示] SKILL.md §5：补上出处（package.json、pyproject.toml、CI 矩阵等），"
+                        "或说明这是外部工具的额外要求")
+            elif not _version_fits(ver, ev[0]):
+                rep.add("WARN", name, f"第 {ln} 行",
+                        f"README 写 {tech} {ver}，{ev[1]} 里是 {'/'.join(ev[0][:3])}",
+                        "[规则] SKILL.md §5：版本要求以仓库里写的为准，写高了会让人以为装不了")
 
     # 锚点有效性：严格匹配，不解码会把 GitHub 复制来的编码锚点判死；
     # 手写 <a name> / <a id> 也是合法锚点，从正文里补进候选。
@@ -710,6 +897,34 @@ def selftest() -> int:
               f"（{len(wording_cases) - len(wording_bad)}/{len(wording_cases)}）")
         if wording_bad:
             print(f"   错判: {', '.join(t for t, _ in wording_bad)}")
+            ok = False
+
+    # 11. 版本声明：仓库里有依据且一致时不报，写高了报出仓库里的值，查不到依据给提示
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        readme = root / "README.md"
+        (root / "package.json").write_text('{"engines": {"node": ">=22.20.0"}}', encoding="utf-8")
+
+        def _ver_warns(text: str) -> list:
+            readme.write_text(text, encoding="utf-8")
+            rep = Report()
+            check_single(readme, rep, [], {})
+            return [f for f in rep.warns if f.where.startswith("第 ")]
+
+        base = ("# T\n\n一句话说明用途。\n\n要求 {req}。\n\n"
+                "## 安装\n\n```sh\nnpx demo-tool\n```\n")
+        same = _ver_warns(base.format(req="Node.js 22.20 及以上"))
+        higher = _ver_warns(base.format(req="Node.js 24.0 及以上"))
+        print(f"{'✓' if not same and higher else '✗'} version   一致的版本声明不报，写高了报出仓库里的值")
+        if same or not higher:
+            ok = False
+            for f in (same or higher):
+                print("   ", f.render())
+
+        (root / "package.json").unlink()
+        no_src = _ver_warns(base.format(req="Python 3.11 以上"))
+        print(f"{'✓' if no_src else '✗'} version   仓库里查不到依据时给提示")
+        if not no_src:
             ok = False
 
     print()
