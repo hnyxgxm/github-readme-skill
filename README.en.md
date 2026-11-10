@@ -8,38 +8,21 @@ A skill that makes AI coding assistants decide how much a README should carry, t
 
 [Install](#install) · [Quick start](#quick-start) · [Examples](#examples) · [Features](#features)
 
-![This README before and after a rewrite: on the left the first screen is a wall of text with install buried mid-document; on the right it holds only a positioning line, badges and one install command](assets/before-after.en.svg)
+![This README before and after a rewrite: on the left prose runs on and install sits under the fourth H2; on the right a positioning line, three badges and one install command](assets/before-after.en.svg)
 
-Judgement is half of it; the mechanical half runs as scripts. Below is the real check output for the previous version of this README ([5bb1748](https://github.com/hnyxgxm/github-readme-skill/blob/5bb1748/README.en.md)), reproduced verbatim: the tool prints in Chinese, so the output stays Chinese.
-
-```text
-README.md: 126 行, H1 1, H2 8, 徽章 1, 图 1, 首屏 10 行
-! WARN 第 11 行 — 二级标题「它改出来的样子」用了口头语
-! WARN 第 29 行 — 二级标题「它解决什么」用了口头语
-! WARN 第 54 行 — 提到 Node.js 22.20，仓库里找不到对应依据
-```
+Left: before, install was the 4th of 7 H2s, 47 lines down. Right: after, it is the 1st. Both versions use the same set of facts.
 
 ## Install
 
 This is an instruction and reference package for coding assistants, not standalone software. The README exists in Chinese and English; **the skill instructions and reference files are currently Chinese only**. To see what it will tell an assistant to do, read [SKILL.md](SKILL.md) and `references/` directly.
 
-All three clients share one `skills` CLI command and install the same complete package. It needs **Node.js 22.20+** — that is the `engines` requirement of the `skills` package, not a dependency of this repository (source: `package.json` of `skills@1.7.6`, value `>=22.20.0`). Run this in any directory:
+It needs **Node.js 22.20+** — that is the `engines` requirement of the `skills` package, not a dependency of this repository (source: `package.json` of `skills@1.7.6`, value `>=22.20.0`). Run this in any directory:
 
 ```sh
 npx skills add hnyxgxm/github-readme-skill -g
 ```
 
-Pick clients when prompted, or specify them with `-a`. `-g` installs at user level for all projects; drop `-g` inside a target project to install only there.
-
-- **Claude Code** (`-a claude-code`): `~/.claude/skills/`; type `/` in a new session and choose `github-readme-skill`
-- **Codex** (`-a codex`): `~/.agents/skills/`; type `$github-readme-skill` in a new session
-- **Qoder Desktop** (`-a qoder`): `~/.qoder/skills/`; type `/` in a new task and choose `github-readme-skill`
-
-Start a new session afterwards and confirm the skill appears in the picker. If it does not, check that the directory contains `SKILL.md` and `references/`, that the path matches the list above, then restart the client. Installing writes into a skills directory, so if a skill with the same name already exists, check its source first.
-
-Fallback without Node.js: copy the whole repository directory (including `references/`) into any of the skill directories above, then restart the client. Cursor, OpenCode and Gemini CLI use the same command with their own target names, listed in the [supported agents file](https://github.com/vercel-labs/skills/blob/main/docs/agents.md); the installer supporting a client does not mean this skill has been verified there.
-
-Maintenance: `npx skills update github-readme-skill -g` to update, `npx skills remove github-readme-skill -g` to uninstall; with several clients installed you are prompted to choose, or pass `-a`.
+Pick clients when prompted, or specify one with `-a`: `claude-code`, `codex`, `qoder`. `-g` installs at user level for all projects; drop `-g` inside a target project to install only there.
 
 ## Quick start
 
@@ -82,13 +65,14 @@ Start with the practice it replaces; the difference is not in the prose:
 - **Before:** open an editor and write from the title down, wherever the writing goes; skim two similar repositories for a structure; add badges, drop in a screenshot, end with "stars welcome". It ships, nobody uses it, and you cannot tell which part was wrong.
 - **Now:** ask "besides this README, does the reader have somewhere else to go" to fix the form and length; verify every promise and version number against the repository; then run two scripts that block anchor, image and front-screen problems before release.
 
-Concretely, it covers five things:
+Concretely, it covers six things:
 
 - **Copying a docs site, or leaving readers nowhere to go**: pick one of three forms (router page, middle state, manual), which decides how much the README carries. A repo with a `docs/` directory the README never links to is a middle state, not a manual.
 - **An overloaded first screen**: the top of the page gets exactly four things — identity, one positioning sentence, trust markers, first result — in roughly 25 lines.
 - **Adjectives standing in for evidence**: the primary proof follows the deliverable — a benchmark table or terminal output for a CLI, a real before/after for an Agent Skill, a minimal call for a library. No screenshots invented to fill space.
 - **A difference nobody can name**: write "why use it" as a comparison of two practices, not as "faster, more elegant"; put numbers in an environment and mark anything unverified as unverified.
 - **Installation split into five sections**: every client shares one `npx skills` command, and differences land only in target name, directory and how it is enabled; the same client never gets two parallel channels.
+- **Checking the mechanical details by eye before release**: broken anchors, image path case, first-screen length, version numbers with no counterpart in the repository — two scripts decide those, and one run beats three read-throughs.
 
 ## Use cases
 
