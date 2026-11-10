@@ -3,7 +3,7 @@
 [English](pair-en.md)
 
 ```bash
-npx example scan .
+npx example scan .          # 扫描当前目录
 ```
 
 ## 安装

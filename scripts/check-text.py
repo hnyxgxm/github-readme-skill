@@ -82,6 +82,13 @@ JUMP_PATTERN = re.compile(
     r"\]\(#(?:安装|使用|开始|快速开始|下载|install|usage|setup|get-?started|"
     r"quick-?start|getting-?started)[^)]*\)", re.I)
 
+# [规则] 同上的安装节判定：安装词出现在标题里就算（「用 Homebrew 安装」也是安装节）。
+# 英文加词首词尾边界，Uninstalling 不算；中文「卸载」不含「安装」，天然不误中。
+INSTALL_HEADING = re.compile(
+    r"安装|下载|快速开始|快速上手|"
+    r"(?<![A-Za-z])(?:install(?:ation|ing)?|setup|getting[- ]?started|quick[- ]?start)(?![A-Za-z])",
+    re.I)
+
 # [经验] 只在中文文档上跑黑话扫描：onboarding 这类词在英文原文里是正常用词。
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
@@ -186,11 +193,14 @@ def headings(text: str) -> list[tuple[int, str, int]]:
 
 
 def gh_slug(title: str) -> str:
-    """按 GitHub 生成标题锚点的规则：小写、去标点、空白合并成连字符。"""
+    """按 GitHub 生成标题锚点的规则：小写、去标点、每个空格换一个连字符。
+
+    连续连字符不合并：「Privacy — exactly」删掉破折号后剩两个空格，
+    GitHub 生成 privacy--exactly（线上锚点 user-content-privacy--exactly-what-it-reads 实测）。
+    """
     s = title.strip().lower()
     s = re.sub(r"[^\w\u4e00-\u9fff \-]", "", s)
-    s = re.sub(r"\s+", "-", s)
-    return re.sub(r"-{2,}", "-", s).strip("-")
+    return s.replace(" ", "-")
 
 
 def gh_slugs(heads: list[tuple[int, str, int]]) -> set[str]:
@@ -298,6 +308,19 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
                 f"前 {win_len} 行内没有安装命令、下载或在线入口、说明图或跳到安装的锚点",
                 "[规则] SKILL.md §4：首屏要有动作或证据，或给出跳转")
 
+    # 安装节排在第 4 节之后时，首屏必须能跳到安装；首屏直接放了可复制命令则无需跳转。
+    # 有图就算"有动作"放行的是上一条，这条单独查，否则安装埋深永远漏报。
+    h2_titles = [t for lvl, t, _ in heads if lvl == 2]
+    install_pos = next((i for i, t in enumerate(h2_titles) if INSTALL_HEADING.search(t)), None)
+    if is_readme and install_pos is not None and install_pos >= 4:
+        install_slugs = {gh_slug(t) for t in h2_titles if INSTALL_HEADING.search(t)}
+        win_anchors = {unquote(a).strip().lower().replace(" ", "-")
+                       for a in ANCHOR_RE.findall(win_plain)}
+        if not (win_anchors & install_slugs) and not has_runnable(win_text):
+            rep.add("WARN", name, "首屏",
+                    f"安装排在第 {install_pos + 1} 节，前 {win_len} 行没有跳到安装的锚点",
+                    "[规则] SKILL.md §4：安装排在第 4 节之后时，首屏必须给出跳转")
+
     # 代码围栏成对：按长度配对后仍没关上才算
     if fence_unclosed(text):
         rep.add("FAIL", name, "全文", "代码围栏没有闭合，后半篇会被吞进代码块",
@@ -333,7 +356,7 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
             dead.append(a)
     if dead:
         rep.add("FAIL", name, "页内锚点", f"指向不存在的标题: {', '.join('#' + d for d in dead[:4])}",
-                "[实测] GitHub 锚点由标题小写、去标点、空白转连字符生成，重名标题追加 -1")
+                "[实测] GitHub 锚点由标题小写、去标点、每个空格转一个连字符生成（连续连字符不合并），重名标题追加 -1")
 
     # 术语：词表是这份 Skill 的内部口径，用户文档里出现变体只提示，不算必须修
     prose = strip_refs(body)
@@ -352,12 +375,13 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
                 rep.add("WARN", name, "全文", f"出现「{word}」×{cnt}，多半是内行黑话",
                         "[规则] SKILL.md §8：删除内行黑话")
 
+    mask = fence_mask(lines)
     return {
         "name": name,
         "lines": len(lines),
         "h1": len(h1),
         "h2": [t for lvl, t, _ in heads if lvl == 2],
-        "fences": sum(1 for m in fence_mask(lines) if m),
+        "fences": sum(1 for i, m in enumerate(mask) if m and (i == 0 or not mask[i - 1])),
         "badges": n_badge,
         "anchors": len(anchors),
         "images": len(re.findall(r"!\[[^\]]*\]\(", body)) + len(re.findall(r"<img\b", body, re.I)),
@@ -366,6 +390,23 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
 
 
 # ---------------------------------------------------------------- 双语对照
+
+def strip_shell_comment(s: str) -> str:
+    """剥 shell 行尾注释：只切引号外、前面是空白的 #。
+
+    §7 允许说明自然改写，注释翻译不同不构成命令不一致；命令本身仍逐字比对。
+    """
+    quote = ""
+    for i, ch in enumerate(s):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "#" and (i == 0 or s[i - 1].isspace()):
+            return s[:i].rstrip()
+    return s.rstrip()
+
 
 def check_pair(a: Path, b: Path, ra: dict, rb: dict, rep: Report) -> None:
     label = f"{a.name} ↔ {b.name}"
@@ -380,7 +421,7 @@ def check_pair(a: Path, b: Path, ra: dict, rb: dict, rep: Report) -> None:
                 f"多一节可能是 License 这类正常差异，人工确认语义对应即可",
                 "[规则] SKILL.md §7：两版章节语义对应，不强求数量相等")
     if ra["fences"] != rb["fences"]:
-        rep.add("WARN", label, "代码块", f"围栏数 {ra['fences']} vs {rb['fences']}",
+        rep.add("WARN", label, "代码块", f"代码块数 {ra['fences']} vs {rb['fences']}",
                 "[规则] SKILL.md §7：同步示例与安装分支")
     if ra["images"] != rb["images"]:
         rep.add("WARN", label, "图片", f"图片数 {ra['images']} vs {rb['images']}",
@@ -404,8 +445,8 @@ def check_pair(a: Path, b: Path, ra: dict, rb: dict, rep: Report) -> None:
         out = set()
         for blk in blocks:
             for line in blk.splitlines():
-                s = line.strip()
-                if s and not s.startswith("#") and COMMAND_PATTERN.match(s):
+                s = strip_shell_comment(line.strip())
+                if s and COMMAND_PATTERN.match(s):
                     out.add(s)
         return out
 
@@ -483,7 +524,7 @@ def selftest() -> int:
         for f in rep.fails:
             print("   ✗", f.where, f.detail[:50])
 
-    # 3. 双语对照
+    # 3. 双语对照：互链缺失要 FAIL；翻译注释不算命令差异，围栏按块数比
     zh, en = FIXTURES / "text" / "pair-zh.md", FIXTURES / "text" / "pair-en.md"
     rep = Report()
     ra = check_single(zh, rep, [], {})
@@ -492,6 +533,13 @@ def selftest() -> int:
     got = 1 if rep.fails else 0
     print(f"{'✓' if got == 1 else '✗'} pair     期望退出码 1（故意漏互链），实际 {got}")
     if got != 1:
+        ok = False
+    cmd_diff = [f for f in rep.warns if f.where == "命令"]
+    pair_precise = (len(cmd_diff) == 1 and "npm i example" in cmd_diff[0].detail
+                    and "npx example scan" not in cmd_diff[0].detail
+                    and not any(f.where == "代码块" for f in rep.warns))
+    print(f"{'✓' if pair_precise else '✗'} pair-cmd 注释翻译不算差异，只抓 npm i example；块数相同不报围栏")
+    if not pair_precise:
         ok = False
 
     # 4. 解析器本身的回归：四反引号块里的内容不能被当成正文
@@ -521,8 +569,8 @@ def selftest() -> int:
         if "锚点" in f.where:
             tail = f.detail.split(": ", 1)[-1]
             dead_tokens |= {t.strip().lstrip("#") for t in tail.split(",")}
-    want_dead = {"install", "ghost"}
-    print(f"{'✓' if dead_tokens == want_dead else '✗'} anchor   只该抓 #install 与 #ghost"
+    want_dead = {"install", "ghost", "privacy-exactly-what-it-reads"}
+    print(f"{'✓' if dead_tokens == want_dead else '✗'} anchor   只该抓 #install、#ghost 与单连字符变体"
           f"（实际抓到 {sorted(dead_tokens)}）")
     if dead_tokens != want_dead:
         ok = False
@@ -580,6 +628,29 @@ def selftest() -> int:
         hit = any("徽章" in f.detail for f in rep.warns)
         print(f"{'✓' if hit else '✗'} badge     HTML 徽章超过 7 个要提示")
         if not hit:
+            ok = False
+
+        # 9. 安装位置：排在第 4 节之后时首屏要有跳转；首屏有锚点或命令就不报
+        late = ("# T\n\n一句话。\n\n![图](shot.png)\n\n"
+                "## 一\n\n## 二\n\n## 三\n\n## 四\n\n## 安装\n\n到文档站下载。\n")
+        install_cases = [
+            ("late",      late, True),
+            ("late-jump", late.replace("一句话。", "一句话。[安装](#安装)"), False),
+            ("late-cmd",  late.replace("![图](shot.png)", "```sh\nnpm i -g x\n```"), False),
+            ("early",     "# T\n\n一句话。\n\n## 安装\n\n到文档站下载。\n\n## 用法\n\n内容。\n", False),
+        ]
+        wrong = []
+        for label, body, want_warn in install_cases:
+            probe.write_text(body, encoding="utf-8")
+            rep = Report()
+            check_single(probe, rep, [], {})
+            got_warn = any("安装排在第" in f.detail for f in rep.warns)
+            if got_warn != want_warn:
+                wrong.append(label)
+        print(f"{'✓' if not wrong else '✗'} install   安装埋深时首屏必须有跳转"
+              f"（{len(install_cases) - len(wrong)}/{len(install_cases)}）")
+        if wrong:
+            print(f"   不符: {', '.join(wrong)}")
             ok = False
 
     print()
@@ -647,7 +718,7 @@ def main(argv: list[str]) -> int:
     print(f"扫描 {len(paths)} 份文件\n")
     for name, d in info.items():
         print(f"{name}: {d['lines']} 行, H1 {d['h1']}, H2 {len(d['h2'])}, "
-              f"围栏 {d['fences']}, 徽章 {d['badges']}, 图 {d['images']}, 首屏 {d['first_screen_lines']} 行")
+              f"代码块 {d['fences']}, 徽章 {d['badges']}, 图 {d['images']}, 首屏 {d['first_screen_lines']} 行")
     print()
 
     order = {"FAIL": 0, "WARN": 1, "INFO": 2}

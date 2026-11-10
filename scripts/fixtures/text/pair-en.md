@@ -1,7 +1,7 @@
 # Example
 
 ```bash
-npx example scan .
+npx example scan .          # scan the current directory
 npm i example
 ```
 
