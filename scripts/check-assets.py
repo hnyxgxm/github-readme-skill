@@ -67,10 +67,15 @@ WARN_RENDERED_FONT_PX = 14.0
 # [实测] font-size 未声明时的 SVG 初始值。
 DEFAULT_SVG_FONT_SIZE = 16.0
 
-# [官方] GitHub 文件大小: 50 MiB 起 git 警告，100 MiB 直接阻止，
-# 通过网页上传单文件上限 25 MiB。README 图片没有单独的体积规定。
+# [官方] GitHub 文件大小：git 50 MiB 起警告、100 MiB 直接阻止。
+# 通过网页上传时按类型分档：图片和 GIF 10 MiB，视频免费计划 10 MiB、付费 100 MiB，
+# 其他文件 25 MiB。出处：docs.github.com「Attaching files」。
 HARD_FILE_LIMIT = 100 * 1024 * 1024
+WEB_UPLOAD_IMAGE_LIMIT = 10 * 1024 * 1024
 WEB_UPLOAD_LIMIT = 25 * 1024 * 1024
+
+# 网页上传按图片档算的类型；其余（视频、附件）走 25 MiB。
+IMAGE_KINDS = {"svg", "gif", "png", "jpg", "jpeg", "webp", "avif", "bmp"}
 
 # [经验] 首屏图的加载预算，分两级。与平台限制无关，平台阻止线见 HARD_FILE_LIMIT。
 GIF_TARGET_BYTES = 2 * 1024 * 1024     # 超过它，首屏开始让人等
@@ -492,7 +497,7 @@ def check_file(md_path: Path, rep: Report, remote: bool = False) -> None:
         if a.kind == "gif" and a.size_bytes > GIF_HEAVY_BYTES:
             rep.add("WARN", name, where,
                     f"GIF {a.size_bytes/1048576:.1f} MB，移动网络下明显拖慢；先砍尺寸再砍帧率",
-                    f"[经验] {GIF_HEAVY_BYTES/1048576:.0f} MB 为告警线，非平台限制（平台阻止线 {HARD_FILE_LIMIT//1048576} MiB）")
+                    f"[经验] {GIF_HEAVY_BYTES/1048576:.0f} MB 为告警线，非平台限制（图片网页上传上限 {WEB_UPLOAD_IMAGE_LIMIT//1048576} MiB）")
         elif a.kind == "gif" and a.size_bytes > GIF_TARGET_BYTES:
             rep.add("WARN", name, where,
                     f"GIF {a.size_bytes/1048576:.1f} MB，超过 {GIF_TARGET_BYTES//1048576} MB 首屏预算",
@@ -500,9 +505,12 @@ def check_file(md_path: Path, rep: Report, remote: bool = False) -> None:
         if a.kind == "svg" and a.size_bytes > SOFT_SVG_BYTES:
             rep.add("WARN", name, where, f"SVG {a.size_bytes/1024:.0f} KB，偏大",
                     f"[经验] {SOFT_SVG_BYTES//1024} KB 为参考上限")
-        if a.size_bytes > WEB_UPLOAD_LIMIT:
-            rep.add("FAIL", name, where, f"{a.size_bytes/1048576:.1f} MB，超过网页上传单文件上限",
-                    "[官方] 网页上传上限 25 MiB；git push 阻止线 100 MiB")
+        upload_limit = (WEB_UPLOAD_IMAGE_LIMIT if a.kind in IMAGE_KINDS
+                        else WEB_UPLOAD_LIMIT)
+        if a.size_bytes > upload_limit:
+            rep.add("FAIL", name, where,
+                    f"{a.size_bytes/1048576:.1f} MB，超过网页上传上限 {upload_limit//1048576} MiB",
+                    "[官方] 网页上传：图片与 GIF 10 MiB，其他文件 25 MiB；git push 阻止线 100 MiB")
 
         # 容器宽
         container = TABLE_CELL_WIDTH if a.in_table else COLUMN_WIDTH

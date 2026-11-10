@@ -52,7 +52,7 @@ from readme_md import (  # noqa: E402
 # 两个用途分开：判"首屏有没有动作"用前 25 行；判"首屏是不是太长"用首个 H2 之前的行数。
 FIRST_SCREEN_LINES = 25
 
-# [规则] SKILL.md §4：徽章 2–7 个，功能性优先。
+# [规则] SKILL.md §4：徽章最多 7 个，功能性优先。
 # 脚本只判上限；0 个也可以用出处或赞助信息替代，不按下限扣分。
 BADGE_MAX = 7
 
@@ -96,6 +96,20 @@ CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 # 只查 README；技能自身的 SKILL.md / references 有说明性长标题，不适用。
 COLLOQUIAL_H2_RE = re.compile(r"它|谁|里头|咱们|啥|看一下|试试|怎么办")
 
+# [规则] SKILL.md §5、§6：仓库文件清单是开发细节，不进 README。
+# 这类标题下面必然是一份文件树或脚本清单，所以按标题判，不去猜正文。
+# 单说「目录」不算：教程类的章节目录是正当用法，有歧义的不报。
+FILE_TREE_TITLES = {
+    "目录结构", "文件结构", "文件清单", "文件树",
+    "仓库结构", "仓库目录", "仓库文件", "项目结构", "项目目录",
+}
+FILE_TREE_TITLES_EN = {
+    "contents", "project structure", "repository structure", "repository layout",
+    "repo layout", "repo structure", "file structure", "file tree",
+    "folder structure", "directory structure",
+}
+FILE_TREE_ISSUE = "是仓库文件清单，属于开发细节，不进 README"
+
 
 def heading_wording_issues(title: str) -> list[str]:
     """§6：标题是索引，不是句子。返回这个 H2 的用词问题。"""
@@ -104,6 +118,8 @@ def heading_wording_issues(title: str) -> list[str]:
         out.append("用了口头语")
     if len(CJK_PATTERN.findall(title)) > 8:
         out.append("太长，像一句话")
+    if title.strip() in FILE_TREE_TITLES or title.strip().lower() in FILE_TREE_TITLES_EN:
+        out.append(FILE_TREE_ISSUE)
     return out
 
 # 只把真命令拿来对照，避免把自然语言示例当成命令不一致。
@@ -304,9 +320,11 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
         for lvl, title, ln in heads:
             if lvl == 2:
                 for issue in heading_wording_issues(title):
+                    reason = ("[规则] SKILL.md §5：项目结构、目录清单不进 README"
+                              if issue == FILE_TREE_ISSUE
+                              else "[规则] SKILL.md §6：H2 用行业通用专业词汇")
                     rep.add("WARN", name, f"第 {ln} 行",
-                            f"二级标题「{title}」{issue}",
-                            "[规则] SKILL.md §6：H2 用行业通用专业词汇")
+                            f"二级标题「{title}」{issue}", reason)
 
     # 首屏长度：到第一个 H2 之前的行数就是读者滚屏前会看到的内容量
     first_h2 = next((ln for lvl, _, ln in heads if lvl == 2), None)
@@ -676,16 +694,19 @@ def selftest() -> int:
             print(f"   不符: {', '.join(wrong)}")
             ok = False
 
-        # 10. 标题用词：口头语和长句标题要报，专业词汇不报
+        # 10. 标题用词：口头语和长句标题要报，专业词汇不报；文件清单标题要报
         wording_cases = {
             "它能做什么": True, "里头有什么": True, "看它先给结论": True,
             "谁适合用": True, "这个工具到底应该怎么用才对": True,
+            "仓库结构": True, "目录结构": True, "项目结构": True,
+            "Repository layout": True, "Project structure": True,
             "安装": False, "用法": False, "功能": False, "适用场景": False,
-            "常见问题": False, "Install": False, "Use cases": False,
+            "常见问题": False, "开发": False, "目录": False,
+            "Install": False, "Use cases": False,
         }
         wording_bad = [(t, v) for t, v in wording_cases.items()
                        if bool(heading_wording_issues(t)) != v]
-        print(f"{'✓' if not wording_bad else '✗'} heading   口头语标题要报，专业词汇不报"
+        print(f"{'✓' if not wording_bad else '✗'} heading   口头语和文件清单标题要报，专业词汇不报"
               f"（{len(wording_cases) - len(wording_bad)}/{len(wording_cases)}）")
         if wording_bad:
             print(f"   错判: {', '.join(t for t, _ in wording_bad)}")
