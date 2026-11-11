@@ -8,17 +8,17 @@ A rule set for AI coding assistants that write READMEs: it first decides how muc
 
 [Install](#install) · [Features](#features) · [Examples](#examples) · [License](#license)
 
-The positioning line of one real README, across two public commits:
+The same Install section, in two public commits of this repo. Both originals are there to open and compare:
 
-> **Before** · [ui-taste-skill README, line 3](https://github.com/DreamOfXM/ui-taste-skill/blob/3196ad5/README.md#L3)
-> 「面向网页、桌面软件、移动 App 和 Web 工作台的设计工作流。以出众美感、优美秩序、精致质感与产品自身气质为目标：可用和整齐只是底线。通过内容驱动的方向探索、构图与排印、材料样片、连续交互和正向审美验收，帮助模型做出完整而有吸引力的界面；为易漂移或不能读图的实现者提供明确的视觉执行包。不是固定皮肤，也不承诺所有模型必然产出优秀作品；跨模型效果仍需受控实验。」
+> **Before** · [8d064ad, README.en.md line 29](https://github.com/hnyxgxm/github-readme-skill/blob/8d064ad/README.en.md#L29)
+> "Pick clients when prompted, or name one with `-a`: `claude-code`, `codex`, `qoder`."
 
-becomes:
+It becomes one section per client, each with a complete command whose arguments are already filled in:
 
-> **After** · [same repo README, line 5](https://github.com/DreamOfXM/ui-taste-skill/blob/568b9cd/README.md#L5)
-> 「让 AI 编程助手把界面改版做成可检查的过程：先比较两个视觉方向，再用设计卡约束实现，最后在最密的一屏和窄屏上验收。」
+> **After** · [3e8726c, README.en.md lines 29–33](https://github.com/hnyxgxm/github-readme-skill/blob/3e8726c/README.en.md#L29)
+> `npx skills add hnyxgxm/github-readme-skill -g -a claude-code`
 
-Both sentences come from public commits and are quoted only as a factual comparison, not an endorsement by that repo. After installing, give the agent a rewrite task and have it compress your own README's positioning line to one sentence too.
+Before, you had to work out which value `-a` takes. After, you read only your own section and copy one command. Once installed, give the agent a rewrite task and have it do the same for your README's Install section.
 
 ## Install
 
@@ -69,13 +69,15 @@ Now: hand the agent the repository path and what you want; it settles the shape,
 
 ## Examples
 
-To see where the difference lands, count the pair above: four sentences before, one after.
+To see where the difference lands, count the pair above: one hint line carrying three client values before, one section per client with a complete command after.
 
-In the before version the purpose does not appear until the third sentence, after a platform list, aesthetic goals and a string of method names; the after version states who acts, the task and the three-step acceptance in its first sentence, replacing a noun-phrase description of the design workflow with an action sentence addressed to the coding assistant.
+The before line makes you work out what `-a` means, then pick one of the three values and put it back into the command; one wrong letter installs into the wrong client. After, that step is gone: the section heading is the client name and the command already has its value, so you read only your own section.
 
-What the after version drops are those four kinds of padding from the positioning line — platform list, aesthetic goals, method list and disclaimers; they are deleted from this sentence, not moved into it. This comparison uses only these two sentences, does not look at other changes in the same commits, and makes no claim about where that content went elsewhere in that repo.
+What the after version drops is the "pick clients when prompted" hint, which is no longer needed once the sections are split. The three values are not lost; each one moved into its own section's command, and the meaning of `-g` plus where to run it sits in the prerequisite line above the Install section.
 
-Both quotes come from the positioning lines of those two `README.md` files: line 3 and line 5 respectively; each link opens to a file where the sentence can be matched word for word.
+This comparison looks at the Install section only, not the whole page in both versions, and says nothing about how other projects should install.
+
+Both quotes can be matched word for word: before is [line 29 of README.en.md at 8d064ad](https://github.com/hnyxgxm/github-readme-skill/blob/8d064ad/README.en.md#L29), after is the command in the Claude Code section at [lines 29–33 of README.en.md at 3e8726c](https://github.com/hnyxgxm/github-readme-skill/blob/3e8726c/README.en.md#L29). The Chinese version quotes its own `README.md` at the same positions; each version quotes the file it links to.
 
 If you have read the comparison above and want to check the rules or acceptance criteria behind it, start at [SKILL.md](SKILL.md) and [references/](references/).
 
