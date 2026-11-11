@@ -24,7 +24,7 @@ Before, you had to work out which value `-a` takes. After, you read only your ow
 
 If you have decided to load this Skill into your coding assistant but are not sure which command to run, check the prerequisites, then pick the line for your client.
 
-Requires Node.js 22.20 or later (source: `skills@1.7.6` package.json, `engines.node` is `>=22.20.0`); the `skills` CLI from vercel-labs/skills fetches `hnyxgxm/github-readme-skill`.
+Requires Node.js 22.20 or later (source: `skills@1.7.6` package.json, `engines.node` is `>=22.20.0`); the `skills` CLI from vercel-labs/skills fetches `hnyxgxm/github-readme-skill`. `-g` installs at user level for all projects; drop `-g` inside a target repository to install only there.
 
 **Claude Code**
 
@@ -44,7 +44,35 @@ npx skills add hnyxgxm/github-readme-skill -g -a codex
 npx skills add hnyxgxm/github-readme-skill -g -a qoder
 ```
 
-Run it in a terminal from any directory; `-g` installs at user level for all projects, and dropping `-g` installs only into the current repository, in which case run it from that repository's directory. It is installed once the command finishes without errors.
+**OpenCode**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a opencode
+```
+
+**ZCode**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a zcode
+```
+
+**Pi**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a pi
+```
+
+Cursor, Trae, Continue, OpenClaw and others are supported too: swap the value after `-a` for a name from [the skills CLI's supported agents list](https://github.com/vercel-labs/skills/blob/main/docs/agents.md) (the same list ships as `docs/agents.md` inside `skills@1.7.6`). It is installed once the command finishes without errors.
+
+**WorkBuddy**
+
+WorkBuddy is not in that list; it reads a user-level skills directory, so put the repository there directly:
+
+```sh
+git clone https://github.com/hnyxgxm/github-readme-skill.git ~/.workbuddy/skills/github-readme-skill
+```
+
+It is installed once `SKILL.md` appears in that directory. Update it later with `git pull` inside the directory.
 
 ## Quick start
 
@@ -85,7 +113,7 @@ If you have read the comparison above and want to check the rules or acceptance 
 
 A README whose structure is already clear and that only needs a typo fixed does not need this Skill; it is for rewrites, reviews and bilingual homepages, not line-by-line polishing.
 
-It works only in claude-code, codex and qoder where Agent Skills are supported, and needs the Node.js version listed under Install; the rules cover READMEs for repositories or packages, not full API manuals or general articles. You confirm the scope of changes; it will not commit, push or modify product files on its own.
+It works in agents that support Agent Skills; the Install section gives commands for the common ones and the Node.js version they need, and the rules cover repository or package READMEs rather than full API manuals or general articles. You confirm the scope of changes; it will not commit, push or modify product files on its own.
 
 Whether the result reads well still has to be seen on the target platform; the repository's own validation scripts only catch structural faults.
 

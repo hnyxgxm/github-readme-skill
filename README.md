@@ -24,7 +24,7 @@
 
 已经决定把这份 Skill 装进编程助手、却不知道该跑哪条命令的人，先确认环境，再按客户端选一行。
 
-需要 Node.js 22.20 及以上（出处：`skills@1.7.6` 的 `package.json`，`engines.node` 为 `>=22.20.0`），通过 vercel-labs/skills 的 `skills` CLI 获取 `hnyxgxm/github-readme-skill`。
+需要 Node.js 22.20 及以上（出处：`skills@1.7.6` 的 `package.json`，`engines.node` 为 `>=22.20.0`），通过 vercel-labs/skills 的 `skills` CLI 获取 `hnyxgxm/github-readme-skill`；`-g` 是用户级安装、所有项目可用，去掉 `-g` 只装当前仓库，此时要在目标仓库目录下执行。
 
 **Claude Code**
 
@@ -44,7 +44,35 @@ npx skills add hnyxgxm/github-readme-skill -g -a codex
 npx skills add hnyxgxm/github-readme-skill -g -a qoder
 ```
 
-在终端任意目录执行；`-g` 是用户级安装、所有项目可用，去掉 `-g` 只装当前仓库，此时要在目标仓库目录下执行。命令结束且没有报错，就装好了。
+**OpenCode**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a opencode
+```
+
+**ZCode**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a zcode
+```
+
+**Pi**
+
+```sh
+npx skills add hnyxgxm/github-readme-skill -g -a pi
+```
+
+Cursor、Trae、Continue、OpenClaw 等客户端也支持，把 `-a` 后面的值换成 [skills CLI 支持的 Agent 清单](https://github.com/vercel-labs/skills/blob/main/docs/agents.md) 里的名字即可（同一份清单在 `skills@1.7.6` 包内的 `docs/agents.md`）。命令结束且没有报错，就装好了。
+
+**WorkBuddy**
+
+WorkBuddy 不在上面那份清单里，它读用户级技能目录；把仓库直接放进去：
+
+```sh
+git clone https://github.com/hnyxgxm/github-readme-skill.git ~/.workbuddy/skills/github-readme-skill
+```
+
+目录里出现 `SKILL.md` 就装好了；以后更新在该目录里 `git pull`。
 
 ## 快速开始
 
@@ -85,7 +113,7 @@ npx skills add hnyxgxm/github-readme-skill -g -a qoder
 
 结构已经清楚、只想改个错别字的 README，不必加载这份 Skill；它面向重写、评审和双语首页，不是逐句润色。
 
-它只在支持 Agent Skill 的 claude-code、codex、qoder 里可用，且需要安装一节列出的 Node.js 版本；规则覆盖仓库或软件包的 README，不覆盖完整 API 手册和一般文章。改动范围由你确认，不会自动提交、推送或改产品文件。
+它在支持 Agent Skill 的客户端里可用，安装一节给了常见客户端的命令和需要的 Node.js 版本；规则覆盖仓库或软件包的 README，不覆盖完整 API 手册和一般文章。改动范围由你确认，不会自动提交、推送或改产品文件。
 
 写得好不好仍要在目标平台实际看一遍；仓库自带的校验脚本只判格式硬伤。
 
