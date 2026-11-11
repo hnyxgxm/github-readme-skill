@@ -97,6 +97,13 @@ CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 # 中文项目名、一两个中文词不会到这个量，不会误报。
 QUOTE_CJK_MIN = 20
 
+# [规则] SKILL.md §7、验收 C32：Agent Skill 类项目要覆盖常见客户端。
+# 只数安装段里出现的 -a 取值；有没有把其余客户端交代给读者，看清单链接或交互提示。
+SKILL_INSTALLER_RE = re.compile(r"npx\s+skills\s+add\b", re.I)
+AGENT_FLAG_RE = re.compile(r"-a[= ]+`?([a-z][a-z0-9-]+)`?", re.I)
+AGENT_LIST_RE = re.compile(
+    r"agents\.md|supported[- ]agents|支持的 Agent|客户端也支持|终端会|choose|prompt", re.I)
+
 # [规则] SKILL.md §6：H2 用行业通用专业词汇，不写成口头语句。
 # 只查 README；技能自身的 SKILL.md / references 有说明性长标题，不适用。
 COLLOQUIAL_H2_RE = re.compile(r"它|谁|里头|咱们|啥|看一下|试试|怎么办")
@@ -198,9 +205,14 @@ def placeholder_issues(lines: list[str]) -> list[tuple[int, str, str]]:
 
 
 def install_section_issues(seg: str) -> list[tuple[str, str]]:
-    """§7：安装段只讲怎么装。返回 (问题, 依据) 列表。"""
+    """§7：安装段只讲怎么装。返回 (问题, 依据) 列表。
+
+    正文里不写安装目录；命令代码块里的目标路径是读者要复制的动作
+    （安装器不支持的客户端只能这样装），不算说明文字，所以目录判据
+    先剥掉围栏与行内代码，其余判据仍看原文。
+    """
     out = []
-    for m in INSTALL_DIR_RE.finditer(seg):
+    for m in INSTALL_DIR_RE.finditer(strip_code(seg)):
         out.append((f"写了安装目录 {m.group(0).strip()}",
                     "[规则] SKILL.md §7：目录是安装器的输出，不写进 README"))
     for m in INSTALL_LAUNCH_RE.finditer(seg):
@@ -229,6 +241,19 @@ def quote_language_issues(lines: list[str]) -> list[tuple[int, int, str]]:
         if n >= QUOTE_CJK_MIN:
             out.append((i, n, content[:40]))
     return out
+
+
+def skill_agent_issue(seg: str) -> tuple[bool, int]:
+    """§7、C32：安装段只列一两个客户端、又没交代其余客户端时提示。
+
+    返回 (要不要提示, 数到的客户端数)。逐值核对安装器清单脚本做不了，
+    只挡住「写完两三条就收工」这种明显漏项。
+    """
+    if not SKILL_INSTALLER_RE.search(seg):
+        return False, 0
+    vals = {m.group(1).lower() for m in AGENT_FLAG_RE.finditer(seg)}
+    has_list = bool(AGENT_LIST_RE.search(seg))
+    return (len(vals) <= 3 and not has_list), len(vals)
 
 
 def heading_wording_issues(title: str) -> list[str]:
@@ -685,6 +710,11 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
             seg = "\n".join(lines[ln:end - 1])
             for issue, rule in install_section_issues(seg):
                 rep.add("WARN", name, f"第 {ln} 行起的安装段", issue, rule)
+            thin, n_agents = skill_agent_issue(seg)
+            if thin:
+                rep.add("WARN", name, f"第 {ln} 行起的安装段",
+                        f"只覆盖 {n_agents} 个客户端，也没有指向安装器的客户端清单",
+                        "[规则] SKILL.md §7、C32：Agent Skill 类项目要覆盖常见客户端")
             break
 
         # 脚本输出不进正文：诊断是修稿用的输入，读者要看的是成品
@@ -1057,6 +1087,8 @@ def selftest() -> int:
             "在终端任意目录运行 `npx skills add x -g`": False,
             "`-g` 是用户级安装，所有项目可用": False,
             "把整个仓库目录复制到技能目录，重启客户端": False,
+            "```sh\ngit clone https://github.com/hnyxgxm/github-readme-skill.git ~/.workbuddy/skills/github-readme-skill\n```": False,
+            "装完会落到 ~/.claude/skills/ 目录里": True,
         }
         install_bad = [(t, v) for t, v in install_cases.items()
                        if bool(install_section_issues(t)) != v]
@@ -1064,6 +1096,22 @@ def selftest() -> int:
               f"（{len(install_cases) - len(install_bad)}/{len(install_cases)}）")
         if install_bad:
             print(f"   错判: {', '.join(t for t, _ in install_bad)}")
+            ok = False
+
+        cov_cases = {
+            "```sh\nnpx skills add x -g -a claude-code\n```": True,
+            "```sh\nnpx skills add x -g -a claude-code\n```\n```sh\nnpx skills add x -g -a codex\n```\n```sh\nnpx skills add x -g -a qoder\n```": True,
+            "```sh\nnpx skills add x -g -a claude-code\n```\n见 [agents.md](https://example.com/agents.md)": False,
+            "```sh\nnpx skills add x -g\n```\n终端会列出已安装的客户端让你选": False,
+            "```sh\nbrew install foo\n```": False,
+            "```sh\nnpx skills add x -g -a claude-code\n```\n```sh\nnpx skills add x -g -a opencode\n```\n```sh\nnpx skills add x -g -a zcode\n```\n```sh\nnpx skills add x -g -a pi\n```": False,
+        }
+        cov_bad = [(t, v) for t, v in cov_cases.items()
+                   if skill_agent_issue(t)[0] != v]
+        print(f"{'✓' if not cov_bad else '✗'} agents     Skill 安装段只列一两个客户端要提示，覆盖或给清单不报"
+              f"（{len(cov_cases) - len(cov_bad)}/{len(cov_cases)}）")
+        if cov_bad:
+            print(f"   错判: {', '.join(t.replace(chr(10), ' / ')[:40] for t, _ in cov_bad)}")
             ok = False
 
         noinfo_cases = {
