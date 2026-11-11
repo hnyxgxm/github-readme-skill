@@ -92,6 +92,11 @@ INSTALL_HEADING = re.compile(
 # [经验] 只在中文文档上跑黑话扫描：onboarding 这类词在英文原文里是正常用词。
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
+# [规则] SKILL.md §8、验收 C27：英文版的例子要用英文原文。
+# 引用块里出现 20 个以上汉字，就是把中文版原句整段搬过来了；
+# 中文项目名、一两个中文词不会到这个量，不会误报。
+QUOTE_CJK_MIN = 20
+
 # [规则] SKILL.md §6：H2 用行业通用专业词汇，不写成口头语句。
 # 只查 README；技能自身的 SKILL.md / references 有说明性长标题，不适用。
 COLLOQUIAL_H2_RE = re.compile(r"它|谁|里头|咱们|啥|看一下|试试|怎么办")
@@ -206,6 +211,23 @@ def install_section_issues(seg: str) -> list[tuple[str, str]]:
         if phrase.lower() in low:
             out.append((f"写了零信息动作句「{phrase}」",
                         "[规则] SKILL.md §7、C30：读者本来就会，删掉不影响任何判断"))
+    return out
+
+
+def quote_language_issues(lines: list[str]) -> list[tuple[int, int, str]]:
+    """§8、C27：引用块里贴了整段中文原文。返回 (行号, 汉字数, 该行前 40 字)。
+
+    只在英文版 README 上调用：中文版引用中文原句是正当的。
+    """
+    out = []
+    for i, line in enumerate(lines, 1):
+        s = line.strip()
+        if not s.startswith(">"):
+            continue
+        content = s.lstrip("> ").strip()
+        n = len(CJK_PATTERN.findall(content))
+        if n >= QUOTE_CJK_MIN:
+            out.append((i, n, content[:40]))
     return out
 
 
@@ -717,6 +739,13 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
             rep.add("WARN", name, "全文",
                     f"术语表建议统一用「{term}」，但出现 {', '.join(f'「{v}」×{c}' for v, c in found)}",
                     "[提示] 词表来自 --terms，属于写作者自己的口径，不是平台规定")
+    # 英文版 README 的引用块里贴了整段中文原文：读者看不懂，示例等于不存在
+    if is_readme and cjk_ratio < 0.05:
+        for ln, n, where in quote_language_issues(lines):
+            rep.add("FAIL", name, f"第 {ln} 行",
+                    f"英文版的引用块里有 {n} 个汉字的中文原文：{where}",
+                    "[规则] SKILL.md §8、C27：英文版贴英文原文，链接英文文件")
+
     if cjk_ratio >= 0.1:
         for word in jargon:
             cnt = count_word(prose, word)
@@ -1084,6 +1113,21 @@ def selftest() -> int:
               f"（{len(placeholder_cases) - len(ph_bad)}/{len(placeholder_cases)}）")
         if ph_bad:
             print(f"   错判: {', '.join(t.replace(chr(10), ' / ')[:40] for t, _ in ph_bad)}")
+            ok = False
+
+        quote_cases = {
+            '> 「面向网页、桌面软件、移动 App 和 Web 工作台的设计工作流。以出众美感、优美秩序、精致质感与产品自身气质为目标：可用和整齐只是底线。」': True,
+            '> "让 AI 编程助手把界面改版做成可检查的过程：先比较两个视觉方向，再用设计卡约束实现。"': True,
+            '> "Pick clients when prompted, or name one with `-a`: `claude-code`."': False,
+            '> `npx skills add hnyxgxm/github-readme-skill -g -a claude-code`': False,
+            '> [简体中文](README.md) · English': False,
+        }
+        ql_bad = [(t, v) for t, v in quote_cases.items()
+                  if bool(quote_language_issues(t.splitlines())) != v]
+        print(f"{'✓' if not ql_bad else '✗'} quotelang  英文版引用块里的中文原文要报，英文引文不报"
+              f"（{len(quote_cases) - len(ql_bad)}/{len(quote_cases)}）")
+        if ql_bad:
+            print(f"   错判: {', '.join(t[:40] for t, _ in ql_bad)}")
             ok = False
 
     # 11. 版本声明：仓库里有依据且一致时不报，写高了报出仓库里的值，查不到依据给提示
