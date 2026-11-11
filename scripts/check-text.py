@@ -107,6 +107,20 @@ INSTALL_LAUNCH_RE = re.compile(
     r"(?:新|新的)(?:会话|任务)[^。\n]{0,24}(?:输入|敲|选)|"
     r"(?:输入|敲|type)\s*[`\"']?(?:/|\$)[`\"']?", re.I)
 
+# [规则] SKILL.md §7、验收 C30：不教读者做他本来就会的动作。
+# 看到代码块就知道要复制，看到两个 H3 就知道选自己那段；这类句子删掉
+# 不影响任何判断。用精确短语而不是宽泛正则：安装段里「在终端运行 `xxx`」
+# 是正当的执行位置，不能一起报掉。
+NO_INFO_ACTION_PHRASES = (
+    "复制整块命令", "复制下面的命令", "复制以下命令", "复制上面的命令",
+    "复制这段代码", "在终端执行即可", "在终端运行即可", "在命令行执行即可",
+    "按你手上的系统选一段", "按你的系统选一段", "按系统选一段",
+    "照着做即可", "按提示操作即可", "直接复制运行", "复制粘贴到终端",
+    "copy the command below", "copy this command", "copy the block below",
+    "just run the command below", "pick the section for your system",
+    "just copy and paste", "run it in the terminal",
+)
+
 # [规则] SKILL.md §8：脚本输出是修稿用的输入，不是给读者的产出。
 # 只认输出行的形状，不认脚本名——开发节里出现命令是正当的。
 SCRIPT_OUTPUT_LINE_RE = re.compile(
@@ -126,6 +140,57 @@ FILE_TREE_TITLES_EN = {
 }
 FILE_TREE_ISSUE = "是仓库文件清单，属于开发细节，不进 README"
 
+# [规则] SKILL.md §7：命令里的占位符，读者复制走了也跑不通。
+# 只扫围栏代码块：行内代码里的 <owner> 常是规则说明本身，报出来全是噪声。
+PLACEHOLDER_RE = re.compile(
+    r"<([A-Za-z][A-Za-z0-9_.\- ]{0,28}|[\u4e00-\u9fa5][\u4e00-\u9fa50-9]{0,18})>")
+HTML_TAGS = {
+    "a", "b", "br", "code", "dd", "details", "div", "dl", "dt", "em", "h1", "h2",
+    "h3", "h4", "hr", "i", "img", "kbd", "li", "ol", "p", "picture", "pre",
+    "s", "source", "span", "strong", "sub", "summary", "sup", "table", "tbody",
+    "td", "th", "thead", "tr", "u", "ul", "video",
+}
+# 占位符只在像命令的行上算问题；伪代码里的 <index> 不是给读者照抄的。
+SHELL_COMMANDS = {
+    "git", "npm", "npx", "pnpm", "yarn", "bun", "node", "deno", "python", "python3",
+    "pip", "pip3", "uv", "poetry", "cargo", "rustup", "go", "docker", "podman",
+    "make", "cmake", "curl", "wget", "brew", "apt", "apt-get", "dnf", "yum",
+    "pacman", "winget", "choco", "scoop", "sh", "bash", "zsh", "source", "export",
+    "cd", "cp", "mv", "ln", "mkdir", "rm", "tar", "unzip", "ssh", "scp", "rsync",
+    "gh", "swift", "swiftc", "xcodebuild", "az", "aws", "kubectl", "helm",
+    "terraform", "dotnet", "java", "mvn", "gradle", "ruby", "gem", "bundle",
+    "php", "composer", "conda", "mamba", "./",
+}
+
+
+def placeholder_issues(lines: list[str]) -> list[tuple[int, str, str]]:
+    """围栏代码块里还留着 <repo-url> 这类占位符。返回 (行号, 占位符, 该行)。
+
+    只认像命令的行：伪代码或编程示例里的 <index> 是示意的值，不是让人照抄的。
+    """
+    out = []
+    fence = None
+    for i, line in enumerate(lines, 1):
+        s = line.strip()
+        if s[:3] in ("```", "~~~"):
+            if fence is None:
+                fence = s[:3]
+            elif s.startswith(fence):
+                fence = None
+            continue
+        if fence is None:
+            continue
+        words = s.split()
+        if words and words[0] in ("sudo", "$", ">"):
+            words = words[1:]
+        if not words or words[0] not in SHELL_COMMANDS:
+            continue
+        for m in PLACEHOLDER_RE.finditer(line):
+            if m.group(1).strip().lower() in HTML_TAGS or "://" in m.group(0):
+                continue
+            out.append((i, m.group(0), s[:60]))
+    return out
+
 
 def install_section_issues(seg: str) -> list[tuple[str, str]]:
     """§7：安装段只讲怎么装。返回 (问题, 依据) 列表。"""
@@ -136,6 +201,11 @@ def install_section_issues(seg: str) -> list[tuple[str, str]]:
     for m in INSTALL_LAUNCH_RE.finditer(seg):
         out.append((f"写了装完怎么调用「{m.group(0).strip()[:32]}」",
                     "[规则] SKILL.md §7：启用属于使用，不塞进安装段"))
+    low = seg.lower()
+    for phrase in NO_INFO_ACTION_PHRASES:
+        if phrase.lower() in low:
+            out.append((f"写了零信息动作句「{phrase}」",
+                        "[规则] SKILL.md §7、C30：读者本来就会，删掉不影响任何判断"))
     return out
 
 
@@ -601,6 +671,12 @@ def check_single(path: Path, rep: Report, jargon: list[str], terms: dict[str, li
                 rep.add("WARN", name, f"第 {i} 行", "贴了脚本检查输出",
                         "[规则] SKILL.md §8：诊断是修稿用的输入，读者要看的是成品")
 
+        # 命令里留占位符：读者复制走了跑不通，等于没写安装
+        for ln, token, where in placeholder_issues(lines):
+            rep.add("WARN", name, f"第 {ln} 行",
+                    f"代码块里留着占位符 {token}，照抄跑不通：{where}",
+                    "[规则] SKILL.md §7：命令要写实值，查不到就问用户，不留占位符")
+
     # 版本与系统下限：写进 README 的数字要能在仓库里找到出处，写高了比没写更糟
     if is_readme:
         for ln, tech, ver, ev in version_claim_issues(path):
@@ -961,6 +1037,23 @@ def selftest() -> int:
             print(f"   错判: {', '.join(t for t, _ in install_bad)}")
             ok = False
 
+        noinfo_cases = {
+            "按你手上的系统选一段，复制整块命令在终端执行即可。": True,
+            "Pick the section for your system and copy the block as-is.": True,
+            "在终端执行即可": True,
+            "需要 macOS Ventura（13）或更新版本，以及 Homebrew。": False,
+            "在终端任意目录运行 `npx skills add x -g`": False,
+            "在源码根目录执行：": False,
+            "`-g` 是用户级安装，所有项目可用": False,
+        }
+        noinfo_bad = [(t, v) for t, v in noinfo_cases.items()
+                      if bool(install_section_issues(t)) != v]
+        print(f"{'✓' if not noinfo_bad else '✗'} noinfo     零信息动作句要报，执行前提不报"
+              f"（{len(noinfo_cases) - len(noinfo_bad)}/{len(noinfo_cases)}）")
+        if noinfo_bad:
+            print(f"   错判: {', '.join(t for t, _ in noinfo_bad)}")
+            ok = False
+
         output_cases = {
             "! WARN 第 11 行 — 二级标题用了口头语": True,
             "README.md: 126 行, H1 1, H2 8, 徽章 1": True,
@@ -973,6 +1066,24 @@ def selftest() -> int:
               f"（{len(output_cases) - len(output_bad)}/{len(output_cases)}）")
         if output_bad:
             print(f"   错判: {', '.join(t for t, _ in output_bad)}")
+            ok = False
+
+        placeholder_cases = {
+            "```sh\ngit clone <repo-url> github-readme-skill\n```": True,
+            "```sh\nnpx skills add <owner>/<repo> -g\n```": True,
+            "```sh\npython3 \"<技能目录>/scripts/check-text.py\" README.md\n```": True,
+            "```sh\ngit clone https://github.com/hnyxgxm/github-readme-skill\n```": False,
+            "```sh\nnpx skills add hnyxgxm/github-readme-skill -g -a codex\n```": False,
+            "```sh\npython3 check-text.py README.md < /dev/null\n```": False,
+            "<details><summary>维护与回归</summary></details>": False,
+            "```python\nx = items[<index>]\n```": False,
+        }
+        ph_bad = [(t, v) for t, v in placeholder_cases.items()
+                  if bool(placeholder_issues(t.splitlines())) != v]
+        print(f"{'✓' if not ph_bad else '✗'} placeholder  代码块里留占位符要报，实值和重定向不报"
+              f"（{len(placeholder_cases) - len(ph_bad)}/{len(placeholder_cases)}）")
+        if ph_bad:
+            print(f"   错判: {', '.join(t.replace(chr(10), ' / ')[:40] for t, _ in ph_bad)}")
             ok = False
 
     # 11. 版本声明：仓库里有依据且一致时不报，写高了报出仓库里的值，查不到依据给提示
